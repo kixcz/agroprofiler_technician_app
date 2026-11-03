@@ -4,11 +4,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  MapPin,
   Menu,
   Plus,
+  RefreshCw,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   ScrollView,
@@ -19,70 +21,18 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  getAllActivityLogs,
+  subscribeDatabaseChanges,
+  LocalActivityLog,
+  SyncRecordStatus,
+} from '@/lib/db/database';
 
-/* ─── Types ─── */
-type Status = 'completed' | 'pending' | 'incomplete';
-type ActivityType = 'damage' | 'distribution' | 'visit' | 'registration';
-
-type Activity = {
-  id: number;
-  type: ActivityType;
-  title: string;
-  farmer: string;
-  date: string;
-  status: Status;
-};
-
-/* ─── Mock data ─── */
-const ACTIVITIES: Activity[] = [
-  {
-    id: 1,
-    type: 'damage',
-    title: 'Crop Damage Report — Rice Field',
-    farmer: 'Juan Dela Cruz',
-    date: 'Today, 10:30 AM',
-    status: 'pending',
-  },
-  {
-    id: 2,
-    type: 'distribution',
-    title: 'Fertilizer Distribution — Batch 2',
-    farmer: 'Maria Santos',
-    date: 'Today, 9:15 AM',
-    status: 'completed',
-  },
-  {
-    id: 3,
-    type: 'visit',
-    title: 'Farm Verification Visit',
-    farmer: 'Pedro Reyes',
-    date: 'Yesterday, 3:45 PM',
-    status: 'incomplete',
-  },
-  {
-    id: 4,
-    type: 'damage',
-    title: 'Crop Damage Assessment — Corn',
-    farmer: 'Ana Garcia',
-    date: 'Yesterday, 2:00 PM',
-    status: 'pending',
-  },
-  {
-    id: 5,
-    type: 'registration',
-    title: 'New Farmer Registration',
-    farmer: 'Carlos Mendoza',
-    date: 'Apr 12, 11:00 AM',
-    status: 'completed',
-  },
-];
-
-/* ─── Config maps ─── */
 const TYPE_CONFIG: Record<
-  ActivityType,
+  LocalActivityLog['activity_type'],
   { bg: string; icon: React.ReactNode; label: string }
 > = {
-  damage: {
+  crop_damage: {
     bg: '#FFF7ED',
     icon: <AlertTriangle size={20} color="#F59E0B" strokeWidth={2.2} />,
     label: 'Damage Report',
@@ -92,30 +42,38 @@ const TYPE_CONFIG: Record<
     icon: <CheckCircle2 size={20} color="#16A34A" strokeWidth={2.2} />,
     label: 'Distribution',
   },
-  visit: {
+  crop_monitoring: {
     bg: '#F8FAFC',
     icon: <Clock size={20} color="#6B7280" strokeWidth={2.2} />,
-    label: 'Field Visit',
+    label: 'Crop Monitoring',
   },
-  registration: {
+  farmer_registration: {
     bg: '#EFF6FF',
     icon: <Plus size={20} color="#2563EB" strokeWidth={2.2} />,
-    label: 'Registration',
+    label: 'Farmer Registration',
+  },
+  farm_registration: {
+    bg: '#ECFEFF',
+    icon: <MapPin size={20} color="#0891B2" strokeWidth={2.2} />,
+    label: 'Farm Registration',
+  },
+  sync: {
+    bg: '#F3E8FF',
+    icon: <RefreshCw size={20} color="#9333EA" strokeWidth={2.2} />,
+    label: 'System Sync',
   },
 };
 
-const STATUS_CONFIG: Record<
-  Status,
+const SYNC_STATUS_CONFIG: Record<
+  SyncRecordStatus,
   { label: string; bg: string; text: string }
 > = {
-  completed:  { label: 'Completed',  bg: '#DCFCE7', text: '#15803D' },
-  pending:    { label: 'Pending',    bg: '#FEF3C7', text: '#B45309' },
-  incomplete: { label: 'Incomplete', bg: '#F1F5F9', text: '#475569' },
+  synced: { label: 'Synced', bg: '#DCFCE7', text: '#15803D' },
+  pending_sync: { label: 'Pending Sync', bg: '#FEF3C7', text: '#B45309' },
+  syncing: { label: 'Syncing', bg: '#DBEAFE', text: '#1D4ED8' },
+  sync_failed: { label: 'Sync Failed', bg: '#FEE2E2', text: '#DC2626' },
+  conflict: { label: 'Conflict Flagged', bg: '#FCE7F3', text: '#BE185D' },
 };
-
-/* ─── Summary counts ─── */
-const countBy = (status: Status) =>
-  ACTIVITIES.filter((a) => a.status === status).length;
 
 export default function ActivitiesScreen() {
   const { openSidebar } = useSidebar();
@@ -123,128 +81,142 @@ export default function ActivitiesScreen() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  /* ─── Theme ─── */
-  const bg          = isDark ? '#0A0F1A' : '#F8FAFF';
-  const card        = isDark ? '#0F1A2E' : '#FFFFFF';
-  const border      = isDark ? '#1A2A3A' : '#E2E8F0';
-  const textPrimary = isDark ? '#E2E8F0' : '#1E293B';
-  const textMuted   = isDark ? '#64748B' : '#64748B';
-  const headerBg    = '#4F46E5'; // indigo — unique per page
+  const [logs, setLogs] = useState<LocalActivityLog[]>([]);
 
-  const pending    = countBy('pending');
-  const completed  = countBy('completed');
-  const incomplete = countBy('incomplete');
+  const loadLogs = async () => {
+    const items = await getAllActivityLogs();
+    setLogs(items);
+  };
+
+  useEffect(() => {
+    loadLogs();
+    const unsub = subscribeDatabaseChanges(() => {
+      loadLogs();
+    });
+    return unsub;
+  }, []);
+
+  const bg = isDark ? '#0A0F1A' : '#F8FAFF';
+  const card = isDark ? '#0F1A2E' : '#FFFFFF';
+  const border = isDark ? '#1A2A3A' : '#E2E8F0';
+  const textPrimary = isDark ? '#E2E8F0' : '#1E293B';
+  const textMuted = isDark ? '#64748B' : '#64748B';
+  const headerBg = '#4F46E5';
+
+  const pending = logs.filter((a) => a.sync_status === 'pending_sync' || a.sync_status === 'sync_failed').length;
+  const completed = logs.filter((a) => a.sync_status === 'synced').length;
+  const conflicts = logs.filter((a) => a.sync_status === 'conflict').length;
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={{ flex: 1, backgroundColor: bg }}>
-      <StatusBar barStyle="light-content" backgroundColor={headerBg} translucent />
+        <StatusBar barStyle="light-content" backgroundColor={headerBg} translucent />
 
-      {/* ── Header ── */}
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: headerBg,
-            paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={openSidebar}
-          style={styles.headerBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        {/* ── Header ── */}
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: headerBg,
+              paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
+            },
+          ]}
         >
-          <Menu size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={openSidebar}
+            style={styles.headerBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Menu size={24} color="#FFFFFF" />
+          </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Activities</Text>
-          <Text style={styles.headerSub}>Field tasks and operations log</Text>
-        </View>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Summary stats ── */}
-        <View style={styles.statsRow}>
-          <StatCard label="Pending"    value={pending}    bg="#FEF3C7" text="#B45309" border="#FDE68A" />
-          <StatCard label="Completed"  value={completed}  bg="#DCFCE7" text="#15803D" border="#BBF7D0" />
-          <StatCard label="Incomplete" value={incomplete} bg="#F1F5F9" text="#475569" border="#CBD5E1" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Activities & Audit Log</Text>
+            <Text style={styles.headerSub}>Persistent SQLite field operations & transaction timestamps</Text>
+          </View>
         </View>
 
-        {/* ── Section heading ── */}
-        <Text style={[styles.sectionTitle, { color: textPrimary }]}>
-          Recent Activities
-        </Text>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Summary stats ── */}
+          <View style={styles.statsRow}>
+            <StatCard label="Pending Sync" value={pending} bg="#FEF3C7" text="#B45309" border="#FDE68A" />
+            <StatCard label="Synced" value={completed} bg="#DCFCE7" text="#15803D" border="#BBF7D0" />
+            <StatCard label="Conflicts" value={conflicts} bg="#FCE7F3" text="#BE185D" border="#FBCFE8" />
+          </View>
 
-        {/* ── Activity cards ── */}
-        <View style={styles.cardList}>
-          {ACTIVITIES.map((act) => {
-            const typeCfg   = TYPE_CONFIG[act.type];
-            const statusCfg = STATUS_CONFIG[act.status];
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>
+            Field Operations Log ({logs.length})
+          </Text>
 
-            return (
-              <TouchableOpacity
-                key={act.id}
-                style={[styles.card, { backgroundColor: card, borderColor: border }]}
-                activeOpacity={0.78}
-              >
-                {/* Left icon badge */}
-                <View style={[styles.iconBadge, { backgroundColor: typeCfg.bg }]}>
-                  {typeCfg.icon}
-                </View>
+          <View style={styles.cardList}>
+            {logs.map((act) => {
+              const typeCfg = TYPE_CONFIG[act.activity_type] || TYPE_CONFIG.crop_monitoring;
+              const statusCfg = SYNC_STATUS_CONFIG[act.sync_status] || SYNC_STATUS_CONFIG.pending_sync;
 
-                {/* Content */}
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={styles.cardTopRow}>
-                    <Text
-                      style={[styles.cardTitle, { color: textPrimary }]}
-                      numberOfLines={2}
-                    >
-                      {act.title}
+              return (
+                <View
+                  key={act.id}
+                  style={[styles.card, { backgroundColor: card, borderColor: border }]}
+                >
+                  <View style={[styles.iconBadge, { backgroundColor: typeCfg.bg }]}>
+                    {typeCfg.icon}
+                  </View>
+
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <View style={styles.cardTopRow}>
+                      <Text
+                        style={[styles.cardTitle, { color: textPrimary }]}
+                        numberOfLines={2}
+                      >
+                        {act.title}
+                      </Text>
+                      <View style={[styles.statusPill, { backgroundColor: statusCfg.bg }]}>
+                        <Text style={[styles.statusText, { color: statusCfg.text }]}>
+                          {statusCfg.label}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={{ fontSize: 12, color: textMuted }}>{act.subtitle}</Text>
+
+                    <Text style={[styles.farmerText, { color: '#16A34A' }]}>
+                      {act.farmer_name} ({act.farmer_lfid}) {act.barangay ? `• Brgy. ${act.barangay}` : ''}
                     </Text>
-                    {/* Status pill */}
-                    <View
-                      style={[
-                        styles.statusPill,
-                        { backgroundColor: statusCfg.bg },
-                      ]}
-                    >
-                      <Text style={[styles.statusText, { color: statusCfg.text }]}>
-                        {statusCfg.label}
+
+                    {act.latitude !== null && act.longitude !== null && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <MapPin size={12} color={textMuted} />
+                        <Text style={{ fontSize: 11, color: textMuted }}>
+                          {act.latitude.toFixed(5)}°N, {act.longitude.toFixed(5)}°E{' '}
+                          {act.accuracy ? `(±${Math.round(act.accuracy)}m)` : ''} • Evidence: {act.evidence_count}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.cardFooter}>
+                      <Text style={[styles.dateText, { color: textMuted }]}>
+                        {new Date(act.created_at).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.typeLabel, { color: textMuted }]}>
+                        {typeCfg.label}
                       </Text>
                     </View>
                   </View>
-
-                  <Text style={[styles.farmerText, { color: '#16A34A' }]}>
-                    {act.farmer}
-                  </Text>
-
-                  <View style={styles.cardFooter}>
-                    <Text style={[styles.dateText, { color: textMuted }]}>
-                      {act.date}
-                    </Text>
-                    <Text style={[styles.typeLabel, { color: textMuted }]}>
-                      {typeCfg.label}
-                    </Text>
-                  </View>
                 </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
     </>
   );
 }
 
-/* ─── Stat card sub-component ─── */
 function StatCard({
   label,
   value,
@@ -266,9 +238,7 @@ function StatCard({
   );
 }
 
-/* ─── Styles ─── */
 const styles = StyleSheet.create({
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -295,15 +265,11 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.75)',
     marginTop: 1,
   },
-
-  /* Scroll */
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 32,
   },
-
-  /* Stats row */
   statsRow: {
     flexDirection: 'row',
     gap: 10,
@@ -325,16 +291,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-
-  /* Section */
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 12,
     letterSpacing: 0.1,
   },
-
-  /* Card list */
   cardList: {
     gap: 10,
   },
@@ -345,11 +307,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 20,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
   iconBadge: {
     width: 42,
@@ -359,8 +316,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 2,
   },
-
-  /* Card content */
   cardTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

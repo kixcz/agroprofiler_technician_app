@@ -5,4 +5,9 @@ const { withNativeWind } = require('nativewind/metro');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+// Enable WASM support for expo-sqlite web worker
+if (!config.resolver.assetExts.includes('wasm')) {
+  config.resolver.assetExts.push('wasm');
+}
+
 module.exports = withNativeWind(config, { input: './global.css', inlineRem: 16 });

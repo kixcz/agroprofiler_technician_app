@@ -20,21 +20,19 @@ export function useNetworkStatus() {
   });
 
   useEffect(() => {
-    // Subscribe to network state changes
     const unsubscribe = NetInfo.addEventListener((state) => {
       setNetworkState({
         isOnline: state.isConnected ?? true,
         networkType: state.type,
-        isConnectionExpensive: state.isConnectionExpensive ?? false,
+        isConnectionExpensive: Boolean(state.details?.isConnectionExpensive),
       });
     });
 
-    // Initial state check
     NetInfo.fetch().then((state) => {
       setNetworkState({
         isOnline: state.isConnected ?? true,
         networkType: state.type,
-        isConnectionExpensive: state.isConnectionExpensive ?? false,
+        isConnectionExpensive: Boolean(state.details?.isConnectionExpensive),
       });
     });
 

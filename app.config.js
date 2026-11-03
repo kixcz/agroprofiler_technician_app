@@ -20,7 +20,13 @@ export default {
       package: process.env.EXPO_PUBLIC_ANDROID_PACKAGE || 'com.agromobile.app',
       versionCode: parseInt(process.env.EXPO_PUBLIC_BUILD_NUMBER || '1'),
       googlePlayServicesVersion: 'float',
-      permissions: ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE'],
+      permissions: [
+        'android.permission.INTERNET',
+        'android.permission.ACCESS_NETWORK_STATE',
+        'android.permission.CAMERA',
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_FINE_LOCATION',
+      ],
       adaptiveIcon: {
         foregroundImage: './assets/images/adaptive-icon.png',
         backgroundColor: '#ffffff',
@@ -42,7 +48,23 @@ export default {
     
     // Deep Linking
     scheme: 'agromobile',
-    plugins: ['expo-router', 'expo-secure-store'],
+    plugins: [
+      'expo-router',
+      'expo-secure-store',
+      'expo-sqlite',
+      [
+        'expo-camera',
+        {
+          cameraPermission: 'Allow AgroProfiler to access your camera to capture geotagged field evidence and scan farmer identification QR codes.',
+        },
+      ],
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission: 'Allow AgroProfiler to access your GPS location to geotag official field inspections, crop damage assessments, and assistance distributions.',
+        },
+      ],
+    ],
     experiments: {
       typedRoutes: true,
     },
@@ -70,10 +92,5 @@ export default {
     runtimeVersion: {
       policy: 'nativeVersion',
     },
-    // Updates configuration - only enable when you have an EAS Update project setup
-    // updates: {
-    //   enabled: process.env.EXPO_PUBLIC_ENVIRONMENT === 'production',
-    //   url: process.env.EXPO_PUBLIC_UPDATES_URL,
-    // },
   },
 };

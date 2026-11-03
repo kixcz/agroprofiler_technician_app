@@ -1,4 +1,9 @@
 import { useSidebar } from '@/lib/SidebarContext';
+import {
+  getAllFarmers,
+  LocalFarmer,
+  subscribeDatabaseChanges,
+} from '@/lib/db/database';
 import { Stack, useRouter } from 'expo-router';
 import {
   ChevronRight,
@@ -9,13 +14,12 @@ import {
   MoreVertical,
   QrCode,
   Search,
-  Trash2,
   UserPlus,
   WifiOff,
   X,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -30,44 +34,75 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /* ─── Palette ─── */
-const AVATAR_PALETTE = ['#16A34A','#2563EB','#9333EA','#F59E0B','#EF4444','#0891B2','#DB2777','#EA580C'];
-const avatarColor = (id: number) => AVATAR_PALETTE[(id - 1) % AVATAR_PALETTE.length];
-const getInitials  = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+const AVATAR_PALETTE = [
+  '#16A34A',
+  '#2563EB',
+  '#9333EA',
+  '#F59E0B',
+  '#EF4444',
+  '#0891B2',
+  '#DB2777',
+  '#EA580C',
+];
+const avatarColor = (idx: number) => AVATAR_PALETTE[idx % AVATAR_PALETTE.length];
+const getInitials = (name: string) =>
+  name
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
 /* ─── Types ─── */
 type RegStatus = 'not_registered' | 'submitted' | 'verified';
-type Farmer = {
-  id: number; name: string; lfid: string; barangay: string; livelihood: string;
-  status: RegStatus; farms: number;
+type FarmerRow = {
+  id: string;
+  numericIdx: number;
+  name: string;
+  lfid: string;
+  rsbsa: string;
+  barangay: string;
+  livelihood: string;
+  status: RegStatus;
   flags: { fourPs?: boolean; ip?: boolean; pwd?: boolean };
   synced: boolean;
+  syncStatus: string;
 };
 
 /* ─── Config ─── */
 const STATUS_CFG: Record<RegStatus, { label: string; bg: string; text: string; dot: string }> = {
-  not_registered: { label: 'Unregistered', bg: '#F1F5F9', text: '#475569', dot: '#94A3B8' },
-  submitted:      { label: 'Submitted',    bg: '#FEF3C7', text: '#B45309', dot: '#F59E0B' },
-  verified:       { label: 'Verified',     bg: '#DCFCE7', text: '#15803D', dot: '#16A34A' },
+  not_registered: { label: 'Draft', bg: '#F1F5F9', text: '#475569', dot: '#94A3B8' },
+  submitted: { label: 'Pending Sync', bg: '#FEF3C7', text: '#B45309', dot: '#F59E0B' },
+  verified: { label: 'Verified', bg: '#DCFCE7', text: '#15803D', dot: '#16A34A' },
 };
 
-/* ─── Mock data ─── */
-const ALL_FARMERS: Farmer[] = [
-  { id: 1, name: 'Juan Dela Cruz',      lfid: 'LFID-001', barangay: 'Brgy. San Isidro',    livelihood: 'Rice Farming',     status: 'verified',       farms: 2, flags: { fourPs: true },              synced: true  },
-  { id: 2, name: 'Maria Santos',        lfid: 'LFID-002', barangay: 'Brgy. Maligaya',       livelihood: 'Corn Farming',      status: 'verified',       farms: 1, flags: { fourPs: true, pwd: true },   synced: true  },
-  { id: 3, name: 'Pedro Reyes',         lfid: 'LFID-003', barangay: 'Brgy. Bagong Silang',  livelihood: 'Vegetable Growing', status: 'submitted',      farms: 3, flags: {},                           synced: false },
-  { id: 4, name: 'Ana Garcia',          lfid: 'LFID-004', barangay: 'Brgy. San Isidro',     livelihood: 'Rice Farming',     status: 'not_registered', farms: 1, flags: { ip: true },                 synced: false },
-  { id: 5, name: 'Carlos Mendoza',      lfid: 'LFID-005', barangay: 'Brgy. Maligaya',       livelihood: 'Coconut Farming',  status: 'verified',       farms: 2, flags: {},                           synced: true  },
-  { id: 6, name: 'Lourdes Bautista',    lfid: 'LFID-006', barangay: 'Brgy. Mabuhay',        livelihood: 'Corn Farming',      status: 'submitted',      farms: 1, flags: { fourPs: true },             synced: false },
-  { id: 7, name: 'Rolando Villanueva',  lfid: 'LFID-007', barangay: 'Brgy. Masagana',       livelihood: 'Rice Farming',     status: 'verified',       farms: 4, flags: { ip: true },                 synced: true  },
-  { id: 8, name: 'Elena Reyes',         lfid: 'LFID-008', barangay: 'Brgy. Maligaya',       livelihood: 'Sugarcane',         status: 'not_registered', farms: 0, flags: { pwd: true },               synced: false },
-  { id: 9, name: 'Bong Perez',          lfid: 'LFID-009', barangay: 'Brgy. Masagana',       livelihood: 'Vegetable Growing', status: 'submitted',      farms: 1, flags: {},                           synced: false },
-  { id: 10, name: 'Rosa Cruz',          lfid: 'LFID-010', barangay: 'Brgy. Mabuhay',        livelihood: 'Rice Farming',     status: 'verified',       farms: 2, flags: { fourPs: true, ip: true },  synced: true  },
-];
+function mapLocalFarmerToRow(f: LocalFarmer, idx: number): FarmerRow {
+  const status: RegStatus =
+    f.registration_status === 'verified'
+      ? 'verified'
+      : f.registration_status === 'pending_review'
+      ? 'submitted'
+      : 'not_registered';
 
-const BARANGAYS  = ['All', ...Array.from(new Set(ALL_FARMERS.map((f) => f.barangay)))];
-const LIVELIHOODS = ['All', ...Array.from(new Set(ALL_FARMERS.map((f) => f.livelihood)))];
+  return {
+    id: f.id,
+    numericIdx: idx + 1,
+    name: `${f.first_name} ${f.middle_name ? f.middle_name[0] + '. ' : ''}${f.last_name}`.trim(),
+    lfid: f.lfid,
+    rsbsa: f.rsbsa_number,
+    barangay: `Brgy. ${f.barangay}`,
+    livelihood: `${f.primary_commodity} Farming`,
+    status,
+    flags: {
+      fourPs: f.is_4ps,
+      ip: f.is_ip,
+      pwd: f.is_pwd,
+    },
+    synced: f.sync_status === 'synced',
+    syncStatus: f.sync_status,
+  };
+}
 
-/* ═══════════════════════════════════════════════════════ */
 export default function FarmersScreen() {
   const router = useRouter();
   const { openSidebar } = useSidebar();
@@ -76,38 +111,52 @@ export default function FarmersScreen() {
   const isDark = colorScheme === 'dark';
 
   /* Theme */
-  const bg          = isDark ? '#0A1A0F' : '#F0FDF4';
-  const card        = isDark ? '#0F2A1A' : '#FFFFFF';
-  const border      = isDark ? '#1F3A28' : '#DCFCE7';
+  const bg = isDark ? '#0A1A0F' : '#F0FDF4';
+  const card = isDark ? '#0F2A1A' : '#FFFFFF';
+  const border = isDark ? '#1F3A28' : '#DCFCE7';
   const textPrimary = isDark ? '#ECFDF5' : '#14532D';
-  const textMuted   = isDark ? '#6EE7B7' : '#6B7280';
+  const textMuted = isDark ? '#6EE7B7' : '#6B7280';
 
-  /* Filter state */
-  const [query,       setQuery]       = useState('');
-  const [statusTab,   setStatusTab]   = useState<'all' | RegStatus>('all');
+  const [farmersList, setFarmersList] = useState<FarmerRow[]>([]);
+  const [query, setQuery] = useState('');
+  const [statusTab, setStatusTab] = useState<'all' | RegStatus>('all');
   const [selBarangay, setSelBarangay] = useState('All');
   const [selLivelihood, setSelLivelihood] = useState('All');
   const [showFilters, setShowFilters] = useState(false);
+  const [active, setActive] = useState<FarmerRow | null>(null);
 
-  /* Action-sheet state */
-  const [active, setActive] = useState<Farmer | null>(null);
+  const loadFarmers = React.useCallback(async () => {
+    const rows = await getAllFarmers();
+    setFarmersList(rows.map(mapLocalFarmerToRow));
+  }, []);
+
+  useEffect(() => {
+    loadFarmers();
+    return subscribeDatabaseChanges(loadFarmers);
+  }, [loadFarmers]);
+
+  const BARANGAYS = ['All', ...Array.from(new Set(farmersList.map((f) => f.barangay)))];
+  const LIVELIHOODS = ['All', ...Array.from(new Set(farmersList.map((f) => f.livelihood)))];
 
   /* Filtered list */
-  const filtered = ALL_FARMERS.filter((f) => {
+  const filtered = farmersList.filter((f) => {
     const q = query.toLowerCase();
-    const matchQ   = !q || f.name.toLowerCase().includes(q) || f.lfid.toLowerCase().includes(q);
+    const matchQ =
+      !q ||
+      f.name.toLowerCase().includes(q) ||
+      f.lfid.toLowerCase().includes(q) ||
+      f.rsbsa.toLowerCase().includes(q);
     const matchTab = statusTab === 'all' || f.status === statusTab;
     const matchBrgy = selBarangay === 'All' || f.barangay === selBarangay;
-    const matchLiv  = selLivelihood === 'All' || f.livelihood === selLivelihood;
+    const matchLiv = selLivelihood === 'All' || f.livelihood === selLivelihood;
     return matchQ && matchTab && matchBrgy && matchLiv;
   });
 
   /* Stats */
-  const totalVerified  = ALL_FARMERS.filter((f) => f.status === 'verified').length;
-  const totalSubmitted = ALL_FARMERS.filter((f) => f.status === 'submitted').length;
-  const totalUnsynced  = ALL_FARMERS.filter((f) => !f.synced).length;
+  const totalVerified = farmersList.filter((f) => f.status === 'verified').length;
+  const totalSubmitted = farmersList.filter((f) => f.status === 'submitted').length;
+  const totalUnsynced = farmersList.filter((f) => !f.synced).length;
 
-  /* Navigation helper */
   const navigateTo = (route: string, params?: Record<string, string>) => {
     setActive(null);
     setTimeout(() => {
@@ -116,9 +165,9 @@ export default function FarmersScreen() {
     }, 180);
   };
 
-  const activeFilters = (selBarangay !== 'All' ? 1 : 0) + (selLivelihood !== 'All' ? 1 : 0);
+  const activeFilters =
+    (selBarangay !== 'All' ? 1 : 0) + (selLivelihood !== 'All' ? 1 : 0);
 
-  /* ─── RENDER ─── */
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -126,13 +175,24 @@ export default function FarmersScreen() {
         <StatusBar barStyle="light-content" backgroundColor="#16A34A" translucent />
 
         {/* ── Header ── */}
-        <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8) }]}>
-          <TouchableOpacity onPress={openSidebar} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8) },
+          ]}
+        >
+          <TouchableOpacity
+            onPress={openSidebar}
+            style={styles.headerBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Menu size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Registered Farmers</Text>
-            <Text style={styles.headerSub}>{ALL_FARMERS.length} farmers in registry</Text>
+            <Text style={styles.headerSub}>
+              {farmersList.length} farmers cached in SQLite
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -145,35 +205,54 @@ export default function FarmersScreen() {
 
         {/* ── Stats strip ── */}
         <View style={[styles.statsStrip, { backgroundColor: card, borderBottomColor: border }]}>
-          <StatPill label="Total"    value={ALL_FARMERS.length} color="#16A34A" />
+          <StatPill label="Total" value={farmersList.length} color="#16A34A" />
           <View style={[styles.statDivider, { backgroundColor: border }]} />
-          <StatPill label="Verified"  value={totalVerified}  color="#15803D" />
+          <StatPill label="Verified" value={totalVerified} color="#15803D" />
           <View style={[styles.statDivider, { backgroundColor: border }]} />
           <StatPill label="Submitted" value={totalSubmitted} color="#B45309" />
           <View style={[styles.statDivider, { backgroundColor: border }]} />
-          <StatPill label="Unsynced"  value={totalUnsynced}  color="#EF4444" />
+          <StatPill label="Pending Sync" value={totalUnsynced} color="#EF4444" />
         </View>
 
         {/* ── Search + Filter button ── */}
         <View style={[styles.searchRow, { backgroundColor: card, borderBottomColor: border }]}>
-          <View style={[styles.searchBar, { backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4', borderColor: border, flex: 1 }]}>
+          <View
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4',
+                borderColor: border,
+                flex: 1,
+              },
+            ]}
+          >
             <Search size={16} color="#9CA3AF" />
             <TextInput
               style={[styles.searchInput, { color: textPrimary }]}
-              placeholder="Search by name or LFID…"
+              placeholder="Search by name, LFID, or RSBSA…"
               placeholderTextColor="#9CA3AF"
               value={query}
               onChangeText={setQuery}
               returnKeyType="search"
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <TouchableOpacity
+                onPress={() => setQuery('')}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
                 <X size={14} color="#9CA3AF" />
               </TouchableOpacity>
             )}
           </View>
           <TouchableOpacity
-            style={[styles.filterBtn, { backgroundColor: activeFilters > 0 ? '#16A34A' : (isDark ? '#1A2E1A' : '#F0FDF4'), borderColor: activeFilters > 0 ? '#16A34A' : border }]}
+            style={[
+              styles.filterBtn,
+              {
+                backgroundColor:
+                  activeFilters > 0 ? '#16A34A' : isDark ? '#1A2E1A' : '#F0FDF4',
+                borderColor: activeFilters > 0 ? '#16A34A' : border,
+              },
+            ]}
             onPress={() => setShowFilters(true)}
           >
             <Filter size={16} color={activeFilters > 0 ? '#FFFFFF' : '#6B7280'} />
@@ -186,14 +265,40 @@ export default function FarmersScreen() {
         </View>
 
         {/* ── Status tab bar ── */}
-        <View style={[styles.tabsBar, { backgroundColor: isDark ? '#0F2A1A' : '#F0FDF4', borderBottomColor: border }]}>
+        <View
+          style={[
+            styles.tabsBar,
+            { backgroundColor: isDark ? '#0F2A1A' : '#F0FDF4', borderBottomColor: border },
+          ]}
+        >
           {(['all', 'verified', 'submitted', 'not_registered'] as const).map((t) => {
-            const active = statusTab === t;
-            const label = t === 'all' ? 'All' : t === 'not_registered' ? 'Unregistered' : t.charAt(0).toUpperCase() + t.slice(1);
+            const isTabActive = statusTab === t;
+            const label =
+              t === 'all'
+                ? 'All'
+                : t === 'not_registered'
+                ? 'Draft'
+                : t === 'submitted'
+                ? 'Pending Sync'
+                : 'Verified';
             return (
-              <TouchableOpacity key={t} style={styles.tabItem} onPress={() => setStatusTab(t)}>
-                <Text style={[styles.tabLabel, { color: active ? '#16A34A' : textMuted, fontWeight: active ? '700' : '500' }]}>{label}</Text>
-                {active && <View style={styles.tabUnderline} />}
+              <TouchableOpacity
+                key={t}
+                style={styles.tabItem}
+                onPress={() => setStatusTab(t)}
+              >
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: isTabActive ? '#16A34A' : textMuted,
+                      fontWeight: isTabActive ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {label}
+                </Text>
+                {isTabActive && <View style={styles.tabUnderline} />}
               </TouchableOpacity>
             );
           })}
@@ -201,9 +306,18 @@ export default function FarmersScreen() {
 
         {/* ── Results count ── */}
         <View style={[styles.countRow, { borderBottomColor: border }]}>
-          <Text style={[styles.countText, { color: textMuted }]}>{filtered.length} farmer{filtered.length !== 1 ? 's' : ''}</Text>
+          <Text style={[styles.countText, { color: textMuted }]}>
+            {filtered.length} farmer{filtered.length !== 1 ? 's' : ''}
+          </Text>
           {(activeFilters > 0 || statusTab !== 'all') && (
-            <TouchableOpacity onPress={() => { setSelBarangay('All'); setSelLivelihood('All'); setStatusTab('all'); }} style={styles.clearFiltersBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelBarangay('All');
+                setSelLivelihood('All');
+                setStatusTab('all');
+              }}
+              style={styles.clearFiltersBtn}
+            >
               <X size={12} color="#EF4444" />
               <Text style={styles.clearFiltersText}>Clear filters</Text>
             </TouchableOpacity>
@@ -211,10 +325,16 @@ export default function FarmersScreen() {
         </View>
 
         {/* ── Farmer list ── */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
           {filtered.length === 0 ? (
             <View style={styles.emptyWrap}>
-              <Text style={[styles.emptyText, { color: textMuted }]}>No farmers match your search or filters.</Text>
+              <Text style={[styles.emptyText, { color: textMuted }]}>
+                No farmers match your search or filters.
+              </Text>
             </View>
           ) : (
             filtered.map((farmer) => {
@@ -223,50 +343,82 @@ export default function FarmersScreen() {
                 <TouchableOpacity
                   key={farmer.id}
                   style={[styles.row, { backgroundColor: card, borderColor: border }]}
-                  onPress={() => router.push({ pathname: '/(dashboard)/farmer-profile' as any, params: { id: farmer.id.toString() } })}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(dashboard)/farmer-profile' as any,
+                      params: { id: farmer.id, lfid: farmer.lfid },
+                    })
+                  }
                   activeOpacity={0.78}
                 >
                   {/* Avatar */}
-                  <View style={[styles.avatar, { backgroundColor: avatarColor(farmer.id) }]}>
+                  <View
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: avatarColor(farmer.numericIdx) },
+                    ]}
+                  >
                     <Text style={styles.avatarText}>{getInitials(farmer.name)}</Text>
                   </View>
 
                   {/* Main info */}
                   <View style={{ flex: 1, gap: 2 }}>
-                    {/* Row 1: name + unsynced */}
                     <View style={styles.nameRow}>
-                      <Text style={[styles.farmerName, { color: textPrimary }]} numberOfLines={1}>{farmer.name}</Text>
-                      {!farmer.synced && <WifiOff size={12} color="#EF4444" />}
+                      <Text
+                        style={[styles.farmerName, { color: textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {farmer.name}
+                      </Text>
+                      {!farmer.synced && <WifiOff size={12} color="#F59E0B" />}
                     </View>
-                    {/* Row 2: LFID */}
-                    <Text style={styles.farmerLfid}>{farmer.lfid}</Text>
-                    {/* Row 3: barangay · livelihood */}
-                    <Text style={[styles.farmerMeta, { color: textMuted }]} numberOfLines={1}>
-                      {farmer.barangay}  ·  {farmer.livelihood}
+                    <Text style={styles.farmerLfid}>
+                      {farmer.lfid} • RSBSA: {farmer.rsbsa}
                     </Text>
-                    {/* Row 4: status + flags */}
+                    <Text
+                      style={[styles.farmerMeta, { color: textMuted }]}
+                      numberOfLines={1}
+                    >
+                      {farmer.barangay} · {farmer.livelihood}
+                    </Text>
                     <View style={styles.badgeRow}>
                       <View style={[styles.statusPill, { backgroundColor: sc.bg }]}>
                         <View style={[styles.statusDot, { backgroundColor: sc.dot }]} />
-                        <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+                        <Text style={[styles.statusText, { color: sc.text }]}>
+                          {sc.label}
+                        </Text>
                       </View>
-                      {farmer.flags.fourPs && <FlagBadge label="4Ps"  color="#7C3AED" bg="#EDE9FE" />}
-                      {farmer.flags.ip     && <FlagBadge label="IP"   color="#0891B2" bg="#CFFAFE" />}
-                      {farmer.flags.pwd    && <FlagBadge label="PWD"  color="#B45309" bg="#FEF3C7" />}
+                      {farmer.flags.fourPs && (
+                        <FlagBadge label="4Ps" color="#7C3AED" bg="#EDE9FE" />
+                      )}
+                      {farmer.flags.ip && (
+                        <FlagBadge label="IP" color="#0891B2" bg="#CFFAFE" />
+                      )}
+                      {farmer.flags.pwd && (
+                        <FlagBadge label="PWD" color="#B45309" bg="#FEF3C7" />
+                      )}
                     </View>
                   </View>
 
                   {/* Right actions */}
                   <View style={styles.rowActions}>
                     <TouchableOpacity
-                      style={[styles.rowActionBtn, { backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4' }]}
-                      onPress={() => navigateTo('/(dashboard)/scan')}
+                      style={[
+                        styles.rowActionBtn,
+                        { backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4' },
+                      ]}
+                      onPress={() =>
+                        navigateTo('/(dashboard)/scan', { lfid: farmer.lfid })
+                      }
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
                       <QrCode size={14} color="#16A34A" />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.rowActionBtn, { backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4' }]}
+                      style={[
+                        styles.rowActionBtn,
+                        { backgroundColor: isDark ? '#1A2E1A' : '#F0FDF4' },
+                      ]}
                       onPress={() => setActive(farmer)}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
@@ -279,61 +431,121 @@ export default function FarmersScreen() {
           )}
         </ScrollView>
 
-        {/* ═══════════════════════════════════════════════════
-            FILTER MODAL
-            ═══════════════════════════════════════════════════ */}
-        <Modal visible={showFilters} transparent animationType="slide" onRequestClose={() => setShowFilters(false)}>
-          <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setShowFilters(false)}>
-            <View style={[styles.filterSheet, { backgroundColor: card, borderColor: border }]} onStartShouldSetResponder={() => true}>
+        {/* FILTER MODAL */}
+        <Modal
+          visible={showFilters}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowFilters(false)}
+        >
+          <TouchableOpacity
+            style={styles.filterOverlay}
+            activeOpacity={1}
+            onPress={() => setShowFilters(false)}
+          >
+            <View
+              style={[styles.filterSheet, { backgroundColor: card, borderColor: border }]}
+              onStartShouldSetResponder={() => true}
+            >
               <View style={[styles.filterSheetHead, { borderBottomColor: border }]}>
-                <Text style={[styles.filterSheetTitle, { color: textPrimary }]}>Filter Farmers</Text>
-                <TouchableOpacity onPress={() => setShowFilters(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={[styles.filterSheetTitle, { color: textPrimary }]}>
+                  Filter Farmers
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowFilters(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
                   <X size={20} color={textMuted} />
                 </TouchableOpacity>
               </View>
 
               <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
-                {/* Barangay filter */}
                 <View style={styles.filterSection}>
-                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Barangay</Text>
+                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>
+                    Barangay
+                  </Text>
                   <View style={styles.filterChipGrid}>
                     {BARANGAYS.map((b) => (
                       <TouchableOpacity
                         key={b}
-                        style={[styles.filterChip, { backgroundColor: selBarangay === b ? '#16A34A' : (isDark ? '#1A2E1A' : '#F0FDF4'), borderColor: selBarangay === b ? '#16A34A' : border }]}
+                        style={[
+                          styles.filterChip,
+                          {
+                            backgroundColor:
+                              selBarangay === b
+                                ? '#16A34A'
+                                : isDark
+                                ? '#1A2E1A'
+                                : '#F0FDF4',
+                            borderColor: selBarangay === b ? '#16A34A' : border,
+                          },
+                        ]}
                         onPress={() => setSelBarangay(b)}
                       >
-                        <Text style={[styles.filterChipText, { color: selBarangay === b ? '#FFFFFF' : textMuted }]}>{b}</Text>
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            { color: selBarangay === b ? '#FFFFFF' : textMuted },
+                          ]}
+                        >
+                          {b}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                {/* Livelihood filter */}
                 <View style={styles.filterSection}>
-                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>Main Livelihood</Text>
+                  <Text style={[styles.filterSectionTitle, { color: textPrimary }]}>
+                    Main Livelihood
+                  </Text>
                   <View style={styles.filterChipGrid}>
                     {LIVELIHOODS.map((l) => (
                       <TouchableOpacity
                         key={l}
-                        style={[styles.filterChip, { backgroundColor: selLivelihood === l ? '#16A34A' : (isDark ? '#1A2E1A' : '#F0FDF4'), borderColor: selLivelihood === l ? '#16A34A' : border }]}
+                        style={[
+                          styles.filterChip,
+                          {
+                            backgroundColor:
+                              selLivelihood === l
+                                ? '#16A34A'
+                                : isDark
+                                ? '#1A2E1A'
+                                : '#F0FDF4',
+                            borderColor: selLivelihood === l ? '#16A34A' : border,
+                          },
+                        ]}
                         onPress={() => setSelLivelihood(l)}
                       >
-                        <Text style={[styles.filterChipText, { color: selLivelihood === l ? '#FFFFFF' : textMuted }]}>{l}</Text>
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            { color: selLivelihood === l ? '#FFFFFF' : textMuted },
+                          ]}
+                        >
+                          {l}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                {/* Apply / Clear */}
                 <View style={[styles.filterFooter, { borderTopColor: border }]}>
                   <TouchableOpacity
                     style={[styles.filterClearBtn, { borderColor: border }]}
-                    onPress={() => { setSelBarangay('All'); setSelLivelihood('All'); }}
+                    onPress={() => {
+                      setSelBarangay('All');
+                      setSelLivelihood('All');
+                    }}
                   >
-                    <Text style={[styles.filterClearText, { color: textPrimary }]}>Clear All</Text>
+                    <Text style={[styles.filterClearText, { color: textPrimary }]}>
+                      Clear All
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.filterApplyBtn} onPress={() => setShowFilters(false)}>
+                  <TouchableOpacity
+                    style={styles.filterApplyBtn}
+                    onPress={() => setShowFilters(false)}
+                  >
                     <Text style={styles.filterApplyText}>Apply Filters</Text>
                   </TouchableOpacity>
                 </View>
@@ -342,90 +554,151 @@ export default function FarmersScreen() {
           </TouchableOpacity>
         </Modal>
 
-        {/* ═══════════════════════════════════════════════════
-            ACTION SHEET MODAL
-            ═══════════════════════════════════════════════════ */}
-        <Modal visible={active !== null} transparent animationType="fade" onRequestClose={() => setActive(null)}>
-          <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setActive(null)}>
-            <View style={[styles.sheet, { backgroundColor: card, borderColor: border }]} onStartShouldSetResponder={() => true}>
-              {/* Sheet header */}
+        {/* ACTION SHEET MODAL */}
+        <Modal
+          visible={active !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setActive(null)}
+        >
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setActive(null)}
+          >
+            <View
+              style={[styles.sheet, { backgroundColor: card, borderColor: border }]}
+              onStartShouldSetResponder={() => true}
+            >
               <View style={[styles.sheetHead, { borderBottomColor: border }]}>
                 {active && (
-                  <View style={[styles.sheetAvatar, { backgroundColor: avatarColor(active.id) }]}>
+                  <View
+                    style={[
+                      styles.sheetAvatar,
+                      { backgroundColor: avatarColor(active.numericIdx) },
+                    ]}
+                  >
                     <Text style={styles.avatarText}>{getInitials(active.name)}</Text>
                   </View>
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.sheetName, { color: textPrimary }]}>{active?.name}</Text>
+                  <Text style={[styles.sheetName, { color: textPrimary }]}>
+                    {active?.name}
+                  </Text>
                   <View style={styles.sheetSubRow}>
                     <Text style={styles.sheetLfid}>{active?.lfid}</Text>
                     {active && !active.synced && (
                       <View style={styles.unsyncedBadge}>
                         <WifiOff size={10} color="#EF4444" />
-                        <Text style={styles.unsyncedText}>Unsynced</Text>
+                        <Text style={styles.unsyncedText}>Pending Sync</Text>
                       </View>
                     )}
                   </View>
                 </View>
                 {active && (
-                  <View style={[styles.statusPill, { backgroundColor: STATUS_CFG[active.status].bg }]}>
-                    <View style={[styles.statusDot, { backgroundColor: STATUS_CFG[active.status].dot }]} />
-                    <Text style={[styles.statusText, { color: STATUS_CFG[active.status].text }]}>
+                  <View
+                    style={[
+                      styles.statusPill,
+                      { backgroundColor: STATUS_CFG[active.status].bg },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.statusDot,
+                        { backgroundColor: STATUS_CFG[active.status].dot },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        { color: STATUS_CFG[active.status].text },
+                      ]}
+                    >
                       {STATUS_CFG[active.status].label}
                     </Text>
                   </View>
                 )}
               </View>
 
-              {/* Actions */}
               <TouchableOpacity
                 style={styles.actionRow}
-                onPress={() => navigateTo('/(dashboard)/farmer-profile', active ? { id: active.id.toString() } : undefined)}
+                onPress={() =>
+                  navigateTo(
+                    '/(dashboard)/farmer-profile',
+                    active ? { id: active.id, lfid: active.lfid } : undefined
+                  )
+                }
               >
                 <View style={[styles.actionIcon, { backgroundColor: '#EFF6FF' }]}>
                   <Eye size={19} color="#2563EB" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionLabel, { color: textPrimary }]}>View Profile</Text>
-                  <Text style={[styles.actionDesc, { color: textMuted }]}>Open farms, parcels & allocations</Text>
+                  <Text style={[styles.actionLabel, { color: textPrimary }]}>
+                    View Profile
+                  </Text>
+                  <Text style={[styles.actionDesc, { color: textMuted }]}>
+                    Open farms, parcels & allocations
+                  </Text>
                 </View>
                 <ChevronRight size={16} color={textMuted} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionRow} onPress={() => setActive(null)}>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() =>
+                  navigateTo(
+                    '/(dashboard)/add-farm',
+                    active
+                      ? {
+                          farmerId: active.id,
+                          farmerName: active.name,
+                          farmerLfid: active.lfid,
+                        }
+                      : undefined
+                  )
+                }
+              >
                 <View style={[styles.actionIcon, { backgroundColor: '#FFFBEB' }]}>
                   <Edit3 size={19} color="#F59E0B" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionLabel, { color: textPrimary }]}>Edit Farmer</Text>
-                  <Text style={[styles.actionDesc, { color: textMuted }]}>Update registration details</Text>
+                  <Text style={[styles.actionLabel, { color: textPrimary }]}>
+                    Add Farm & Parcel
+                  </Text>
+                  <Text style={[styles.actionDesc, { color: textMuted }]}>
+                    Register geotagged farm parcel offline
+                  </Text>
                 </View>
                 <ChevronRight size={16} color={textMuted} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionRow} onPress={() => navigateTo('/(dashboard)/scan')}>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() =>
+                  navigateTo(
+                    '/(dashboard)/distribute',
+                    active ? { lfid: active.lfid } : undefined
+                  )
+                }
+              >
                 <View style={[styles.actionIcon, { backgroundColor: '#F0FDF4' }]}>
                   <QrCode size={19} color="#16A34A" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionLabel, { color: textPrimary }]}>Scan / Verify</Text>
-                  <Text style={[styles.actionDesc, { color: textMuted }]}>Scan QR or LFID to verify identity</Text>
+                  <Text style={[styles.actionLabel, { color: textPrimary }]}>
+                    Distribute Assistance (QR)
+                  </Text>
+                  <Text style={[styles.actionDesc, { color: textMuted }]}>
+                    Verify beneficiary & release allocation
+                  </Text>
                 </View>
                 <ChevronRight size={16} color={textMuted} />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionRow} onPress={() => setActive(null)}>
-                <View style={[styles.actionIcon, { backgroundColor: '#FEF2F2' }]}>
-                  <Trash2 size={19} color="#EF4444" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionLabel, { color: '#EF4444' }]}>Delete Farmer</Text>
-                  <Text style={[styles.actionDesc, { color: textMuted }]}>Remove from registry</Text>
-                </View>
-                <ChevronRight size={16} color={textMuted} />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.cancelBtn, { borderTopColor: border }]} onPress={() => setActive(null)}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, { borderTopColor: border }]}
+                onPress={() => setActive(null)}
+              >
                 <Text style={[styles.cancelText, { color: textMuted }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -437,7 +710,15 @@ export default function FarmersScreen() {
 }
 
 /* ─── Sub-components ─── */
-function StatPill({ label, value, color }: { label: string; value: number; color: string }) {
+function StatPill({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
   return (
     <View style={styles.statPill}>
       <Text style={[styles.statValue, { color }]}>{value}</Text>
@@ -445,7 +726,15 @@ function StatPill({ label, value, color }: { label: string; value: number; color
     </View>
   );
 }
-function FlagBadge({ label, color, bg }: { label: string; color: string; bg: string }) {
+function FlagBadge({
+  label,
+  color,
+  bg,
+}: {
+  label: string;
+  color: string;
+  bg: string;
+}) {
   return (
     <View style={[styles.flagBadge, { backgroundColor: bg }]}>
       <Text style={[styles.flagText, { color }]}>{label}</Text>
@@ -455,122 +744,266 @@ function FlagBadge({ label, color, bg }: { label: string; color: string; bg: str
 
 /* ─── Styles ─── */
 const styles = StyleSheet.create({
-  /* Header */
   header: {
-    backgroundColor: '#16A34A', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingBottom: 14, gap: 12,
+    backgroundColor: '#16A34A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 12,
   },
   headerBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: { fontSize: 19, fontWeight: '800', color: '#FFFFFF' },
-  headerSub:   { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
+  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
 
-  /* Stats */
   statsStrip: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-    paddingVertical: 10, borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   statPill: { alignItems: 'center', flex: 1 },
   statValue: { fontSize: 20, fontWeight: '800' },
   statLabel: { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
   statDivider: { width: 1, height: 28 },
 
-  /* Search row */
   searchRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
   },
   searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: 13, borderWidth: 1, paddingHorizontal: 12, height: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 13,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 42,
   },
   searchInput: { flex: 1, fontSize: 13, paddingVertical: 0 },
   filterBtn: {
-    width: 42, height: 42, borderRadius: 13, borderWidth: 1,
-    alignItems: 'center', justifyContent: 'center', position: 'relative',
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
   filterBadge: {
-    position: 'absolute', top: -4, right: -4,
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
 
-  /* Tabs */
   tabsBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 4 },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: 9, position: 'relative' },
   tabLabel: { fontSize: 12 },
-  tabUnderline: { position: 'absolute', bottom: 0, left: 8, right: 8, height: 2.5, borderRadius: 2, backgroundColor: '#16A34A' },
+  tabUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    left: 8,
+    right: 8,
+    height: 2.5,
+    borderRadius: 2,
+    backgroundColor: '#16A34A',
+  },
 
-  /* Count row */
   countRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   countText: { fontSize: 12, fontWeight: '500' },
   clearFiltersBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   clearFiltersText: { fontSize: 11, fontWeight: '600', color: '#EF4444' },
 
-  /* List */
   listContent: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 32, gap: 8 },
 
-  /* Farmer row */
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    padding: 12, borderRadius: 18, borderWidth: 1,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  avatar: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   farmerName: { fontSize: 14, fontWeight: '700', flex: 1 },
-  farmerLfid: { fontSize: 12, fontWeight: '600', color: '#16A34A' },
+  farmerLfid: { fontSize: 11, fontWeight: '600', color: '#16A34A' },
   farmerMeta: { fontSize: 11 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 10, fontWeight: '700' },
   flagBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   flagText: { fontSize: 10, fontWeight: '700' },
   rowActions: { gap: 6 },
-  rowActionBtn: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  rowActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  /* Empty */
   emptyWrap: { alignItems: 'center', paddingTop: 60 },
   emptyText: { fontSize: 14 },
 
-  /* Filter modal */
-  filterOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  filterSheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, maxHeight: '75%' },
-  filterSheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  filterSheet: {
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    borderWidth: 1,
+    maxHeight: '75%',
+  },
+  filterSheetHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
   filterSheetTitle: { fontSize: 17, fontWeight: '800' },
   filterSection: { paddingHorizontal: 20, paddingTop: 16 },
   filterSectionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
   filterChipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  filterChip: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
+  filterChip: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
   filterChipText: { fontSize: 13, fontWeight: '600' },
-  filterFooter: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 16, marginTop: 8, borderTopWidth: 1 },
-  filterClearBtn: { flex: 1, borderRadius: 14, borderWidth: 1, paddingVertical: 13, alignItems: 'center' },
+  filterFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    marginTop: 8,
+    borderTopWidth: 1,
+  },
+  filterClearBtn: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
   filterClearText: { fontSize: 14, fontWeight: '600' },
-  filterApplyBtn: { flex: 2, backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 13, alignItems: 'center' },
+  filterApplyBtn: {
+    flex: 2,
+    backgroundColor: '#16A34A',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
   filterApplyText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 
-  /* Action sheet */
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, paddingBottom: 20 },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
-  sheetAvatar: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    paddingBottom: 20,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  sheetAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sheetName: { fontSize: 15, fontWeight: '700' },
   sheetSubRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   sheetLfid: { fontSize: 12, fontWeight: '600', color: '#16A34A' },
-  unsyncedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FEE2E2', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
+  unsyncedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
   unsyncedText: { fontSize: 10, fontWeight: '600', color: '#EF4444' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 13 },
-  actionIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   actionLabel: { fontSize: 15, fontWeight: '600' },
   actionDesc: { fontSize: 12, marginTop: 1 },
-  cancelBtn: { marginTop: 4, marginHorizontal: 20, paddingTop: 13, borderTopWidth: 1, alignItems: 'center' },
+  cancelBtn: {
+    marginTop: 4,
+    marginHorizontal: 20,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    alignItems: 'center',
+  },
   cancelText: { fontSize: 14, fontWeight: '600' },
 });

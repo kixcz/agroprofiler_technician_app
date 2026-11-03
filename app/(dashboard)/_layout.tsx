@@ -1,4 +1,5 @@
 import CustomTabBar from '@/components/ui/CustomTabBar';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import Sidebar from '@/components/ui/Sidebar';
 import { SidebarProvider } from '@/lib/SidebarContext';
 import { Tabs } from 'expo-router';
@@ -8,6 +9,7 @@ export default function DashboardLayout() {
   return (
     <SidebarProvider>
       <View style={{ flex: 1 }}>
+        <OfflineBanner />
         <Tabs
           tabBar={(props) => <CustomTabBar {...props} />}
           screenOptions={{ headerShown: false }}
@@ -20,10 +22,10 @@ export default function DashboardLayout() {
           <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
 
           {/* ── SIDEBAR-ACCESSIBLE (hidden from tab bar) ── */}
-          <Tabs.Screen name="register-farmer"   options={{ tabBarButton: () => null }} />
-          <Tabs.Screen name="record-damage"     options={{ tabBarButton: () => null }} />
-          <Tabs.Screen name="distribute"         options={{ tabBarButton: () => null }} />
-          <Tabs.Screen name="crop-monitoring"   options={{ tabBarButton: () => null }} />
+          <Tabs.Screen name="register-farmer" options={{ tabBarButton: () => null }} />
+          <Tabs.Screen name="record-damage" options={{ tabBarButton: () => null }} />
+          <Tabs.Screen name="distribute" options={{ tabBarButton: () => null }} />
+          <Tabs.Screen name="crop-monitoring" options={{ tabBarButton: () => null }} />
 
           {/* ── PUSH-ONLY SCREENS ── */}
           <Tabs.Screen name="farmer-profile" options={{ tabBarButton: () => null }} />

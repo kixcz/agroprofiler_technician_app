@@ -1,13 +1,18 @@
 /**
- * Local Storage Utility for Offline Data
- * Uses in-memory storage as fallback for Expo managed apps
- * TODO: Migrate to expo-sqlite for production
+ * Persistent Local Storage Utility for Offline Data
+ * Powered by expo-sqlite (kv_store + relational tables) with fallback for web
  */
 
-// In-memory storage fallback
+import {
+  getDatabase,
+  getAllFarmers,
+  getAllActivityLogs,
+  getSyncQueueItems,
+} from '../db/database';
+
+// In-memory fallback for web only
 const memoryStorage = new Map<string, string>();
 
-// Storage Keys
 const KEYS = {
   FARMERS: '@agro_farmers',
   FARMS: '@agro_farms',
@@ -19,56 +24,63 @@ const KEYS = {
   OFFLINE_QUEUE: '@agro_offline_queue',
 };
 
-/**
- * Save data to local storage
- */
 export async function saveData(key: string, data: any): Promise<void> {
   try {
     const jsonData = JSON.stringify(data);
     memoryStorage.set(key, jsonData);
+    const db = await getDatabase();
+    if (db) {
+      await db.runAsync(
+        'INSERT OR REPLACE INTO kv_store (key, value, updated_at) VALUES (?, ?, ?)',
+        [key, jsonData, new Date().toISOString()]
+      );
+    }
   } catch (error) {
-    console.error('Error saving data:', error);
-    throw error;
+    console.error('Error saving data to SQLite kv_store:', error);
   }
 }
 
-/**
- * Get data from local storage
- */
 export async function getData(key: string): Promise<any | null> {
   try {
+    const db = await getDatabase();
+    if (db) {
+      const row = await db.getFirstAsync<{ value: string }>(
+        'SELECT value FROM kv_store WHERE key = ?',
+        [key]
+      );
+      if (row?.value) {
+        return JSON.parse(row.value);
+      }
+    }
     const jsonData = memoryStorage.get(key) || null;
     return jsonData ? JSON.parse(jsonData) : null;
   } catch (error) {
-    console.error('Error getting data:', error);
+    console.error('Error getting data from SQLite kv_store:', error);
     return null;
   }
 }
 
-/**
- * Remove data from local storage
- */
 export async function removeData(key: string): Promise<void> {
   try {
     memoryStorage.delete(key);
+    const db = await getDatabase();
+    if (db) {
+      await db.runAsync('DELETE FROM kv_store WHERE key = ?', [key]);
+    }
   } catch (error) {
-    console.error('Error removing data:', error);
-    throw error;
+    console.error('Error removing data from SQLite kv_store:', error);
   }
 }
 
-/**
- * Clear all local storage
- */
 export async function clearAllData(): Promise<void> {
   try {
-    const keys = Object.values(KEYS);
-    for (const key of keys) {
-      memoryStorage.delete(key);
+    memoryStorage.clear();
+    const db = await getDatabase();
+    if (db) {
+      await db.runAsync('DELETE FROM kv_store');
     }
   } catch (error) {
     console.error('Error clearing data:', error);
-    throw error;
   }
 }
 
@@ -78,12 +90,14 @@ export async function saveFarmers(farmers: any[]): Promise<void> {
 }
 
 export async function getFarmers(): Promise<any[]> {
+  const sqliteFarmers = await getAllFarmers();
+  if (sqliteFarmers.length > 0) return sqliteFarmers;
   return (await getData(KEYS.FARMERS)) || [];
 }
 
 export async function addFarmer(farmer: any): Promise<void> {
   const farmers = await getFarmers();
-  farmers.unshift(farmer); // Add to beginning
+  farmers.unshift(farmer);
   await saveFarmers(farmers);
 }
 
@@ -108,6 +122,8 @@ export async function saveActivities(activities: any[]): Promise<void> {
 }
 
 export async function getActivities(): Promise<any[]> {
+  const sqliteLogs = await getAllActivityLogs();
+  if (sqliteLogs.length > 0) return sqliteLogs;
   return (await getData(KEYS.ACTIVITIES)) || [];
 }
 
@@ -129,21 +145,25 @@ export async function addToPendingSync(item: any): Promise<void> {
 }
 
 export async function getPendingSync(): Promise<any[]> {
-  return (await getData(KEYS.PENDING_SYNC)) || [];
+  const queue = await getSyncQueueItems();
+  return queue.filter((q) => q.status !== 'synced');
 }
 
 export async function markAsSynced(itemId: string): Promise<void> {
-  const pending = await getPendingSync();
-  const updated = pending.map((item: any) =>
-    item.id === itemId ? { ...item, synced: true } : item
-  );
-  await saveData(KEYS.PENDING_SYNC, updated);
+  const db = await getDatabase();
+  if (db) {
+    await db.runAsync(
+      "UPDATE sync_queue SET status = 'synced', synced_at = ? WHERE operation_id = ?",
+      [new Date().toISOString(), itemId]
+    );
+  }
 }
 
 export async function clearSyncedItems(): Promise<void> {
-  const pending = await getPendingSync();
-  const unsynced = pending.filter((item: any) => !item.synced);
-  await saveData(KEYS.PENDING_SYNC, unsynced);
+  const db = await getDatabase();
+  if (db) {
+    await db.runAsync("DELETE FROM sync_queue WHERE status = 'synced'");
+  }
 }
 
 // Last Sync Timestamp
@@ -167,11 +187,13 @@ export async function addToOfflineQueue(operation: any): Promise<void> {
 }
 
 export async function getOfflineQueue(): Promise<any[]> {
+  const sqlQueue = await getSyncQueueItems();
+  if (sqlQueue.length > 0) return sqlQueue;
   return (await getData(KEYS.OFFLINE_QUEUE)) || [];
 }
 
 export async function removeFromQueue(index: number): Promise<void> {
-  const queue = await getOfflineQueue();
+  const queue = (await getData(KEYS.OFFLINE_QUEUE)) || [];
   queue.splice(index, 1);
   await saveData(KEYS.OFFLINE_QUEUE, queue);
 }
