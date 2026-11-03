@@ -346,7 +346,7 @@ export default function HomeDashboard() {
           <TouchableOpacity
             style={styles.actionCard}
             activeOpacity={0.75}
-            onPress={() => router.push('/record-damage' as any)}
+            onPress={() => router.push('/(dashboard)/record-damage' as any)}
           >
             <AlertTriangle size={22} color="#059669" strokeWidth={2.2} />
             <Text style={styles.actionCardText}>Report{'\n'}Crop Damage</Text>

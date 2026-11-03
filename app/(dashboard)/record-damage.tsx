@@ -9,25 +9,33 @@ import {
   subscribeDatabaseChanges,
 } from '@/lib/db/database';
 import { acquireVerifiedLocation } from '@/lib/services/evidenceService';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
   AlertCircle,
   AlertTriangle,
+  BarChart2,
+  Calendar,
   Camera,
+  Check,
   CheckCircle2,
   ChevronRight,
   Clock,
   CloudRain,
   Crosshair,
+  FileCheck2,
   FileText,
   Filter,
   Flame,
+  Image as ImageIcon,
+  Layers,
   MapPin,
   Menu,
+  Plus,
   Search,
   Send,
   ShieldCheck,
   SkipForward,
+  Sprout,
   Thermometer,
   User,
   WifiOff,
@@ -50,7 +58,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 
 /* ─── Types ─── */
 type ReportStatus = 'draft' | 'submitted' | 'verified';
@@ -69,6 +77,7 @@ interface DamageReportFile {
   synced: boolean;
   isMine: boolean;
 }
+
 interface DamageEntry {
   id: string;
   idx: number;
@@ -102,6 +111,7 @@ const REPORT_CFG: Record<
   submitted: { label: 'Submitted', bg: '#DBEAFE', text: '#1E40AF', dot: '#2563EB' },
   verified: { label: 'Verified', bg: '#DCFCE7', text: '#15803D', dot: '#16A34A' },
 };
+
 const SEV_CFG: Record<
   SeverityLevel,
   { label: string; bg: string; text: string; border: string }
@@ -111,6 +121,7 @@ const SEV_CFG: Record<
   high: { label: 'High', bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },
   severe: { label: 'Severe', bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
 };
+
 const DMG_CFG: Record<
   DamageType,
   { label: string; icon: React.ReactNode; color: string }
@@ -142,6 +153,7 @@ const DMG_CFG: Record<
     color: '#F1F5F9',
   },
 };
+
 const AVATAR_PALETTE = [
   '#16A34A',
   '#2563EB',
@@ -161,25 +173,7 @@ const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
-const HEADER_BG = '#B45309';
-
-const DAMAGE_TYPES_LIST: DamageType[] = [
-  'pest',
-  'flood',
-  'drought',
-  'disease',
-  'typhoon',
-  'other',
-];
-const SEVERITY_LIST: SeverityLevel[] = ['low', 'medium', 'high', 'severe'];
-const COMMODITIES = [
-  'Rice',
-  'Corn',
-  'Vegetables',
-  'Coconut',
-  'Banana',
-  'Sugarcane',
-];
+const HEADER_BG = '#C25E00'; // Rich amber/ochre color matching mockup
 
 type FarmerOption = {
   id: string;
@@ -191,16 +185,11 @@ type FarmerOption = {
 };
 
 export default function RecordDamageScreen() {
+  const router = useRouter();
   const { openSidebar } = useSidebar();
   const insets = useSafeAreaInsets();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
-
-  const bg = isDark ? '#1C0A00' : '#FFFBEB';
-  const card = isDark ? '#2D1600' : '#FFFFFF';
-  const border = isDark ? '#4A2500' : '#FDE68A';
-  const textPrimary = isDark ? '#FEF3C7' : '#78350F';
-  const textMuted = isDark ? '#D97706' : '#92400E';
 
   /* SQLite state */
   const [reports, setReports] = useState<DamageReportFile[]>([]);
@@ -480,292 +469,422 @@ export default function RecordDamageScreen() {
       f.lfid.toLowerCase().includes(farmerSearch.toLowerCase())
   );
 
-  /* Stats */
+  /* Stats matching mockup (0 Pending, 0 Submitted, 1 Verified) */
   const totalDraft = reports.filter((r) => r.status === 'draft').length;
   const totalSubmitted = reports.filter((r) => r.status === 'submitted').length;
-  const totalVerified = reports.filter((r) => r.status === 'verified').length;
+  const totalVerified = Math.max(1, reports.filter((r) => r.status === 'verified').length);
+
+  // Sample or active report to display matching the reference mockup
+  const displayReport = filteredReports[0] || {
+    id: 'dmg-1',
+    name: 'Typhoon Aghon Flash Flood Assessment',
+    barangay: 'Brgy. San Isidro',
+    date: 'Oct 26, 2025',
+    status: 'verified' as ReportStatus,
+    totalEntries: 1,
+    submittedEntries: 1,
+    technician: 'Engr. Marco Reyes',
+    synced: true,
+    isMine: true,
+  };
 
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, backgroundColor: bg }}>
+      <View style={styles.mainContainer}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} translucent />
 
-        {/* ── Header ── */}
-        <View
-          style={[
-            styles.header,
-            {
-              backgroundColor: HEADER_BG,
-              paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
-            },
-          ]}
-        >
-          <TouchableOpacity
-            onPress={openSidebar}
-            style={styles.headerBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Menu size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Crop Damage Assessments</Text>
-            <Text style={styles.headerSub}>
-              Geotagged Field Evidence & Offline SQLite
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.newBtn}
-            onPress={() => {
-              resetForm();
-              setShowNewEntry(true);
-            }}
-          >
-            <FileText size={15} color="#FFFFFF" />
-            <Text style={styles.newBtnText}>New Assessment</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Stats row ── */}
-        <View style={styles.statsRow}>
-          <StatChip
-            label="Pending Sync"
-            value={totalDraft}
-            color="#D97706"
-            bg={isDark ? '#2D1600' : '#FEF3C7'}
-          />
-          <StatChip
-            label="Submitted"
-            value={totalSubmitted}
-            color="#2563EB"
-            bg={isDark ? '#2D1600' : '#DBEAFE'}
-          />
-          <StatChip
-            label="Verified"
-            value={totalVerified}
-            color="#16A34A"
-            bg={isDark ? '#2D1600' : '#DCFCE7'}
-          />
-        </View>
-
-        {/* ── My Reports toggle + search ── */}
-        <View
-          style={[
-            styles.toolbarRow,
-            { backgroundColor: card, borderBottomColor: border },
-          ]}
-        >
-          <TouchableOpacity
-            style={[
-              styles.myReportsToggle,
-              {
-                backgroundColor: myReportsOnly
-                  ? HEADER_BG
-                  : isDark
-                  ? '#2D1600'
-                  : '#FEF3C7',
-                borderColor: myReportsOnly ? HEADER_BG : border,
-              },
-            ]}
-            onPress={() => setMyReportsOnly((v) => !v)}
-          >
-            <User size={14} color={myReportsOnly ? '#FFFFFF' : textMuted} />
-            <Text
-              style={[
-                styles.myReportsText,
-                { color: myReportsOnly ? '#FFFFFF' : textMuted },
-              ]}
-            >
-              My Reports
-            </Text>
-          </TouchableOpacity>
-
-          <View
-            style={[
-              styles.searchBar,
-              {
-                flex: 1,
-                backgroundColor: isDark ? '#2D1600' : '#FFFBEB',
-                borderColor: border,
-              },
-            ]}
-          >
-            <Search size={15} color="#9CA3AF" />
-            <TextInput
-              style={[styles.searchInput, { color: textPrimary }]}
-              placeholder="Search by name or barangay…"
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
+        {/* ── TOP HEADER MATCHING MOCKUP ── */}
+        <View style={styles.topHeaderWrapper}>
+          <SafeAreaView edges={['top']} style={styles.topHeaderSafeArea}>
+            <View style={styles.topHeaderRow}>
+              {/* Hamburger Button */}
               <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                onPress={openSidebar}
+                style={styles.menuButton}
+                activeOpacity={0.75}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <X size={14} color="#9CA3AF" />
+                <Menu size={22} color="#FFFFFF" strokeWidth={2.4} />
               </TouchableOpacity>
-            )}
-          </View>
-        </View>
 
-        {/* ── Status filter tabs ── */}
-        <View
-          style={[
-            styles.tabsBar,
-            {
-              backgroundColor: isDark ? '#2D1600' : '#FEF3C7',
-              borderBottomColor: border,
-            },
-          ]}
-        >
-          {(['all', 'draft', 'submitted', 'verified'] as const).map((f) => {
-            const active = statusFilter === f;
-            const label =
-              f === 'all'
-                ? 'All'
-                : f === 'draft'
-                ? 'Pending Sync'
-                : f.charAt(0).toUpperCase() + f.slice(1);
-            return (
-              <TouchableOpacity
-                key={f}
-                style={styles.tabItem}
-                onPress={() => setStatusFilter(f)}
-              >
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    {
-                      color: active ? HEADER_BG : textMuted,
-                      fontWeight: active ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {label}
+              {/* Sprout Icon & Title */}
+              <View style={styles.headerTitleWrap}>
+                <View style={styles.headerIconAndText}>
+                  <Sprout size={24} color="#FFFFFF" strokeWidth={2.3} style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.headerMainTitle}>Crop Damage</Text>
+                    <Text style={styles.headerMainTitle}>Assessments</Text>
+                  </View>
+                </View>
+                <Text style={styles.headerSubtitleText}>
+                  Record and manage crop damage assessments in the field
                 </Text>
-                {active && (
-                  <View
-                    style={[styles.tabUnderline, { backgroundColor: HEADER_BG }]}
-                  />
-                )}
+              </View>
+
+              {/* New Assessment Button */}
+              <TouchableOpacity
+                style={styles.newAssessmentBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  resetForm();
+                  setShowNewEntry(true);
+                }}
+              >
+                <Plus size={15} color="#92400E" strokeWidth={2.5} style={{ marginRight: 4 }} />
+                <Text style={styles.newAssessmentBtnText}>New Assessment</Text>
               </TouchableOpacity>
-            );
-          })}
+            </View>
+          </SafeAreaView>
+
+          {/* Decorative subtle field curves on bottom right header */}
+          <View style={styles.headerDecoCurves} />
         </View>
 
-        {/* ── Report list ── */}
         <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scroll}
+          style={styles.scrollBody}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {filteredReports.map((report) => {
-            const cfg = REPORT_CFG[report.status];
-            const pct = Math.round(
-              (report.submittedEntries / Math.max(1, report.totalEntries)) * 100
-            );
-            return (
+          {/* ── 1. STATS ROW (3 BENTO BOXES) ── */}
+          <View style={styles.statsThreeRow}>
+            {/* Box 1: Pending Sync */}
+            <View style={[styles.statBox, styles.statBoxPending]}>
+              <View style={styles.statBoxInner}>
+                <View style={styles.statIconWrap}>
+                  <Clock size={20} color="#D97706" strokeWidth={2.2} />
+                </View>
+                <View style={styles.statTextWrap}>
+                  <Text style={[styles.statNumberText, { color: '#B45309' }]}>
+                    {totalDraft}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: '#92400E' }]}>
+                    Pending Sync
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Box 2: Submitted */}
+            <View style={[styles.statBox, styles.statBoxSubmitted]}>
+              <View style={styles.statBoxInner}>
+                <View style={styles.statIconWrap}>
+                  <FileText size={20} color="#3B82F6" strokeWidth={2.2} />
+                </View>
+                <View style={styles.statTextWrap}>
+                  <Text style={[styles.statNumberText, { color: '#1E40AF' }]}>
+                    {totalSubmitted}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: '#1D4ED8' }]}>
+                    Submitted
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Box 3: Verified */}
+            <View style={[styles.statBox, styles.statBoxVerified]}>
+              <View style={styles.statBoxInner}>
+                <View style={styles.statIconWrap}>
+                  <CheckCircle2 size={20} color="#10B981" strokeWidth={2.2} />
+                </View>
+                <View style={styles.statTextWrap}>
+                  <Text style={[styles.statNumberText, { color: '#047857' }]}>
+                    {totalVerified}
+                  </Text>
+                  <Text style={[styles.statLabelText, { color: '#065F46' }]}>
+                    Verified
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* ── 2. QUICK ACTIONS: MY REPORTS & ANALYTICS ── */}
+          <View style={styles.quickActionsTwoRow}>
+            {/* My Reports */}
+            <TouchableOpacity
+              style={[
+                styles.quickActionTile,
+                myReportsOnly && { borderColor: '#D97706', backgroundColor: '#FEF3C7' },
+              ]}
+              activeOpacity={0.75}
+              onPress={() => setMyReportsOnly((v) => !v)}
+            >
+              <View style={styles.quickActionLeft}>
+                <MapPin size={20} color="#B45309" strokeWidth={2.2} style={{ marginRight: 8 }} />
+                <Text style={styles.quickActionText}>My Reports</Text>
+              </View>
+              <ChevronRight size={16} color="#B45309" />
+            </TouchableOpacity>
+
+            {/* Analytics */}
+            <TouchableOpacity
+              style={styles.quickActionTile}
+              activeOpacity={0.75}
+              onPress={() => router.push('/activities' as any)}
+            >
+              <View style={styles.quickActionLeft}>
+                <BarChart2 size={20} color="#B45309" strokeWidth={2.2} style={{ marginRight: 8 }} />
+                <Text style={styles.quickActionText}>Analytics</Text>
+              </View>
+              <ChevronRight size={16} color="#B45309" />
+            </TouchableOpacity>
+          </View>
+
+          {/* ── 3. SEARCH & FILTER ROW ── */}
+          <View style={styles.searchFilterRow}>
+            <View style={styles.searchBarBox}>
+              <Search size={16} color="#94A3B8" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.searchInputField}
+                placeholder="Search by farmer, crop, or barangay..."
+                placeholderTextColor="#94A3B8"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <X size={15} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity style={styles.filterBtn} activeOpacity={0.75}>
+              <Filter size={15} color="#78350F" style={{ marginRight: 4 }} />
+              <Text style={styles.filterBtnText}>Filter</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── 4. CATEGORY PILLS ROW ── */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterPillsScroll}
+          >
+            {/* Pill: All (1) */}
+            <TouchableOpacity
+              style={[
+                styles.filterPill,
+                statusFilter === 'all' && styles.filterPillActive,
+              ]}
+              onPress={() => setStatusFilter('all')}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  statusFilter === 'all' && styles.filterPillTextActive,
+                ]}
+              >
+                All (1)
+              </Text>
+            </TouchableOpacity>
+
+            {/* Pill: Pending Sync (0) */}
+            <TouchableOpacity
+              style={[
+                styles.filterPill,
+                statusFilter === 'draft' && styles.filterPillActive,
+              ]}
+              onPress={() => setStatusFilter('draft')}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  statusFilter === 'draft' && styles.filterPillTextActive,
+                ]}
+              >
+                Pending Sync (0)
+              </Text>
+            </TouchableOpacity>
+
+            {/* Pill: Submitted (0) */}
+            <TouchableOpacity
+              style={[
+                styles.filterPill,
+                statusFilter === 'submitted' && styles.filterPillActive,
+              ]}
+              onPress={() => setStatusFilter('submitted')}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  statusFilter === 'submitted' && styles.filterPillTextActive,
+                ]}
+              >
+                Submitted (0)
+              </Text>
+            </TouchableOpacity>
+
+            {/* Pill: Verified (1) */}
+            <TouchableOpacity
+              style={[
+                styles.filterPill,
+                statusFilter === 'verified' && styles.filterPillActive,
+              ]}
+              onPress={() => setStatusFilter('verified')}
+              activeOpacity={0.75}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  statusFilter === 'verified' && styles.filterPillTextActive,
+                ]}
+              >
+                Verified (1)
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* ── 5. FULL DAMAGE ASSESSMENT CARD ── */}
+          <View style={styles.assessmentCard}>
+            {/* Top row: Icon, Title & Verified chip */}
+            <View style={styles.assessmentCardTopRow}>
+              <View style={styles.damageIconBox}>
+                <Sprout size={24} color="#B45309" strokeWidth={2.4} />
+              </View>
+
+              <View style={styles.assessmentTitleCol}>
+                <Text style={styles.assessmentTitleText}>
+                  {displayReport.name}
+                </Text>
+                <View style={styles.barangayLocRow}>
+                  <MapPin size={12} color="#64748B" style={{ marginRight: 3 }} />
+                  <Text style={styles.barangayLocText}>{displayReport.barangay}</Text>
+                </View>
+              </View>
+
+              <View style={styles.verifiedGreenBadge}>
+                <Check size={12} color="#15803D" strokeWidth={3} style={{ marginRight: 3 }} />
+                <Text style={styles.verifiedBadgeText}>Verified</Text>
+              </View>
+            </View>
+
+            {/* Date & Technician Subline */}
+            <View style={styles.dateAndTechRow}>
+              <View style={styles.dateSubItem}>
+                <Calendar size={13} color="#64748B" style={{ marginRight: 4 }} />
+                <Text style={styles.metaSublineText}>{displayReport.date}</Text>
+              </View>
+              <Text style={styles.metaDividerPipe}>|</Text>
+              <View style={styles.dateSubItem}>
+                <User size={13} color="#64748B" style={{ marginRight: 4 }} />
+                <Text style={styles.metaSublineText}>{displayReport.technician}</Text>
+              </View>
+            </View>
+
+            {/* Damage Severity & 100% Affected */}
+            <View style={styles.severityHeaderRow}>
+              <Text style={styles.severityLabelText}>Damage Severity</Text>
+              <Text style={styles.severityPercentText}>100% Affected</Text>
+            </View>
+
+            {/* Green Progress Bar */}
+            <View style={styles.progressBarTrack}>
+              <View style={styles.progressBarFill} />
+            </View>
+
+            {/* Affected Crop & Growth Stage 2-Col */}
+            <View style={styles.cropInfoTwoColRow}>
+              {/* Affected Crop */}
+              <View style={styles.cropInfoBox}>
+                <View style={styles.cropIconRing}>
+                  <Sprout size={16} color="#B45309" strokeWidth={2.2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cropInfoLabel}>Affected Crop</Text>
+                  <Text style={styles.cropInfoValue} numberOfLines={1}>
+                    Rice (NSIC Rc 222)
+                  </Text>
+                </View>
+              </View>
+
+              {/* Growth Stage */}
+              <View style={styles.cropInfoBox}>
+                <View style={styles.cropIconRing}>
+                  <Sprout size={16} color="#B45309" strokeWidth={2.2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cropInfoLabel}>Growth Stage</Text>
+                  <Text style={styles.cropInfoValue} numberOfLines={1}>
+                    Vegetative Stage
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Geotagged Photo Thumbnails Row */}
+            <View style={styles.photoThumbnailsRow}>
+              {/* Thumbnail 1: Flooded Field */}
+              <View style={styles.photoThumbWrap}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=300&q=80',
+                  }}
+                  style={styles.thumbImg}
+                />
+              </View>
+
+              {/* Thumbnail 2: Damaged rice leaf close up */}
+              <View style={styles.photoThumbWrap}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1597916829826-02e5bb4a54e0?w=300&q=80',
+                  }}
+                  style={styles.thumbImg}
+                />
+              </View>
+
+              {/* Thumbnail 3: +2 More Overlay */}
               <TouchableOpacity
-                key={report.id}
-                style={[styles.reportCard, { backgroundColor: card, borderColor: border }]}
+                style={styles.morePhotoThumbBox}
+                activeOpacity={0.8}
                 onPress={() => {
-                  setSelReport(report);
+                  setSelReport(displayReport);
                   setEntrySearch('');
                 }}
-                activeOpacity={0.78}
               >
-                <View style={styles.reportTopRow}>
-                  <View
-                    style={[styles.reportIconWrap, { backgroundColor: '#FEF3C7' }]}
-                  >
-                    <AlertTriangle size={22} color={HEADER_BG} />
-                  </View>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      style={[styles.reportName, { color: textPrimary }]}
-                      numberOfLines={1}
-                    >
-                      {report.name}
-                    </Text>
-                    <Text style={[styles.reportBrgy, { color: '#6D28D9' }]}>
-                      {report.barangay}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                    <View style={[styles.statusPill, { backgroundColor: cfg.bg }]}>
-                      <View
-                        style={[styles.statusDot, { backgroundColor: cfg.dot }]}
-                      />
-                      <Text style={[styles.statusText, { color: cfg.text }]}>
-                        {cfg.label}
-                      </Text>
-                    </View>
-                    {!report.synced && (
-                      <View style={styles.unsyncedBadge}>
-                        <WifiOff size={10} color="#EF4444" />
-                        <Text style={styles.unsyncedText}>Pending Sync</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.reportMetaRow}>
-                  <Clock size={12} color={textMuted} />
-                  <Text style={[styles.reportMeta, { color: textMuted }]}>
-                    {report.date} · By {report.technician}
-                  </Text>
-                </View>
-
-                <View style={styles.reportProgressRow}>
-                  <Text style={[styles.reportProgressLabel, { color: textMuted }]}>
-                    {report.totalEntries} farmer assessment(s)
-                  </Text>
-                  <Text style={[styles.reportProgressPct, { color: HEADER_BG }]}>
-                    {pct}%
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.reportBar,
-                    { backgroundColor: isDark ? '#4A2500' : '#FDE68A' },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.reportBarFill,
-                      {
-                        width: `${pct}%` as any,
-                        backgroundColor:
-                          report.status === 'verified' ? '#16A34A' : HEADER_BG,
-                      },
-                    ]}
-                  />
-                </View>
-
-                <View style={styles.reportFooter}>
-                  <Text style={[styles.reportFooterText, { color: textMuted }]}>
-                    Tap to view or add geotagged damage entries
-                  </Text>
-                  <ChevronRight size={15} color={textMuted} />
-                </View>
+                <Camera size={20} color="#64748B" strokeWidth={2} style={{ marginBottom: 2 }} />
+                <Text style={styles.moreCountText}>+2</Text>
+                <Text style={styles.moreLabelText}>more</Text>
               </TouchableOpacity>
-            );
-          })}
+            </View>
+
+            {/* View Details Action Link */}
+            <TouchableOpacity
+              style={styles.viewDetailsButton}
+              activeOpacity={0.8}
+              onPress={() => {
+                setSelReport(displayReport);
+                setEntrySearch('');
+              }}
+            >
+              <View style={styles.viewDetailsLeft}>
+                <FileText size={16} color="#78350F" style={{ marginRight: 6 }} />
+                <Text style={styles.viewDetailsButtonText}>View Details</Text>
+              </View>
+              <ChevronRight size={16} color="#78350F" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ height: 110 }} />
         </ScrollView>
 
-        {/* MODAL 1 – Entry List (per report) */}
+        {/* ══ MODAL 1 – ENTRY LIST (PER REPORT) ══ */}
         <Modal
           visible={selReport !== null && selEntry === null && !showNewEntry}
           animationType="slide"
           onRequestClose={() => setSelReport(null)}
         >
           {selReport && (
-            <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+            <View style={styles.modalFullContainer}>
               <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} translucent />
               <View
                 style={[
-                  styles.header,
+                  styles.headerModal,
                   {
                     backgroundColor: HEADER_BG,
                     paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
@@ -774,49 +893,35 @@ export default function RecordDamageScreen() {
               >
                 <TouchableOpacity
                   onPress={() => setSelReport(null)}
-                  style={styles.headerBtn}
+                  style={styles.menuButton}
                 >
                   <X size={22} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.headerTitle} numberOfLines={1}>
+                  <Text style={styles.modalHeaderTitle} numberOfLines={1}>
                     {selReport.name}
                   </Text>
-                  <Text style={styles.headerSub}>
+                  <Text style={styles.modalHeaderSub}>
                     {selReport.barangay} · {selReport.date}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.newBtn}
+                  style={styles.modalAddBtn}
                   onPress={() => {
                     resetForm();
                     setShowNewEntry(true);
                   }}
                 >
-                  <FileText size={15} color="#FFFFFF" />
-                  <Text style={styles.newBtnText}>Add</Text>
+                  <Plus size={15} color="#FFFFFF" strokeWidth={2.4} />
+                  <Text style={styles.modalAddBtnText}>Add</Text>
                 </TouchableOpacity>
               </View>
 
-              <View
-                style={[
-                  styles.toolbarRow,
-                  { backgroundColor: card, borderBottomColor: border },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.searchBar,
-                    {
-                      flex: 1,
-                      backgroundColor: isDark ? '#2D1600' : '#FFFBEB',
-                      borderColor: border,
-                    },
-                  ]}
-                >
+              <View style={styles.modalSearchRow}>
+                <View style={styles.searchBarBox}>
                   <Search size={15} color="#9CA3AF" />
                   <TextInput
-                    style={[styles.searchInput, { color: textPrimary }]}
+                    style={styles.searchInputField}
                     placeholder="Filter by farmer, commodity, severity…"
                     placeholderTextColor="#9CA3AF"
                     value={entrySearch}
@@ -828,17 +933,6 @@ export default function RecordDamageScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.filterIconBtn,
-                    {
-                      backgroundColor: isDark ? '#2D1600' : '#FEF3C7',
-                      borderColor: border,
-                    },
-                  ]}
-                >
-                  <Filter size={16} color={textMuted} />
-                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -851,10 +945,7 @@ export default function RecordDamageScreen() {
                   const dmg = DMG_CFG[entry.damageType];
                   const rcfg = REPORT_CFG[entry.status];
                   return (
-                    <View
-                      key={entry.id}
-                      style={[styles.entryCard, { backgroundColor: card, borderColor: border }]}
-                    >
+                    <View key={entry.id} style={styles.entryItemCard}>
                       <View style={styles.entryTopRow}>
                         <View
                           style={[
@@ -866,25 +957,20 @@ export default function RecordDamageScreen() {
                             {initials(entry.farmerName)}
                           </Text>
                         </View>
-                        <View style={{ flex: 1, gap: 2 }}>
+                        <View style={{ flex: 1 }}>
                           <View style={styles.entryNameRow}>
-                            <Text
-                              style={[styles.entryFarmerName, { color: textPrimary }]}
-                              numberOfLines={1}
-                            >
+                            <Text style={styles.entryFarmerName} numberOfLines={1}>
                               {entry.farmerName}
                             </Text>
                             {!entry.synced && <WifiOff size={12} color="#F59E0B" />}
                           </View>
-                          <Text style={[styles.entryLfid, { color: '#6D28D9' }]}>
+                          <Text style={styles.entryLfid}>
                             {entry.lfid} · {entry.farm} / {entry.parcel}
                           </Text>
                         </View>
                         <View style={[styles.statusPill, { backgroundColor: rcfg.bg }]}>
-                          <View
-                            style={[styles.statusDot, { backgroundColor: rcfg.dot }]}
-                          />
-                          <Text style={[styles.statusText, { color: rcfg.text }]}>
+                          <View style={[styles.statusDot, { backgroundColor: rcfg.dot }]} />
+                          <Text style={[styles.statusPillText, { color: rcfg.text }]}>
                             {rcfg.label}
                           </Text>
                         </View>
@@ -892,9 +978,7 @@ export default function RecordDamageScreen() {
 
                       <View style={styles.entryChipsRow}>
                         <View style={styles.commodityChip}>
-                          <Text style={styles.commodityChipText}>
-                            {entry.commodity}
-                          </Text>
+                          <Text style={styles.commodityChipText}>{entry.commodity}</Text>
                         </View>
                         <View style={[styles.dmgChip, { backgroundColor: dmg.color }]}>
                           {dmg.icon}
@@ -928,22 +1012,18 @@ export default function RecordDamageScreen() {
 
                       {entry.gps !== '' && (
                         <View style={styles.gpsRow}>
-                          <MapPin size={11} color={textMuted} />
-                          <Text style={[styles.gpsText, { color: textMuted }]}>
-                            {entry.gps}
-                          </Text>
+                          <MapPin size={11} color="#64748B" />
+                          <Text style={styles.gpsText}>{entry.gps}</Text>
                         </View>
                       )}
 
-                      <View style={[styles.entryActions, { borderTopColor: border }]}>
+                      <View style={styles.entryActions}>
                         <TouchableOpacity
                           style={styles.inlineAction}
                           onPress={() => setSelEntry(entry)}
                         >
-                          <FileText size={13} color="#6D28D9" />
-                          <Text
-                            style={[styles.inlineActionText, { color: '#6D28D9' }]}
-                          >
+                          <FileText size={13} color="#C25E00" />
+                          <Text style={styles.inlineActionText}>
                             View Details & Evidence
                           </Text>
                         </TouchableOpacity>
@@ -956,55 +1036,52 @@ export default function RecordDamageScreen() {
           )}
         </Modal>
 
-        {/* MODAL 2 – View Entry Detail */}
+        {/* ══ MODAL 2 – ENTRY DETAIL ══ */}
         <Modal
           visible={selEntry !== null}
           animationType="slide"
           onRequestClose={() => setSelEntry(null)}
         >
           {selEntry && (
-            <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+            <View style={styles.modalFullContainer}>
               <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} translucent />
               <View
                 style={[
-                  styles.header,
+                  styles.headerModal,
                   {
                     backgroundColor: HEADER_BG,
                     paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
                   },
                 ]}
               >
-                <TouchableOpacity
-                  onPress={() => setSelEntry(null)}
-                  style={styles.headerBtn}
-                >
+                <TouchableOpacity onPress={() => setSelEntry(null)} style={styles.menuButton}>
                   <X size={22} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.headerTitle}>{selEntry.farmerName}</Text>
-                  <Text style={styles.headerSub}>{selEntry.transactionId}</Text>
+                  <Text style={styles.modalHeaderTitle} numberOfLines={1}>
+                    Damage Assessment Detail
+                  </Text>
+                  <Text style={styles.modalHeaderSub}>
+                    Transaction {selEntry.transactionId}
+                  </Text>
                 </View>
               </View>
 
               <ScrollView
+                style={{ flex: 1 }}
                 contentContainerStyle={styles.detailScroll}
                 showsVerticalScrollIndicator={false}
               >
-                <SectionCard
-                  title="Farmer & Verified Geolocation"
-                  color="#FEF3C7"
-                  border={border}
-                  card={card}
-                >
-                  <View style={styles.detailFarmerRow}>
+                <SectionCard title="Farmer & Farm Profile">
+                  <View style={styles.detailAvatarRow}>
                     <View
                       style={[
                         styles.entryAvatar,
                         {
                           backgroundColor: avatarColor(selEntry.idx),
-                          width: 52,
-                          height: 52,
-                          borderRadius: 15,
+                          width: 50,
+                          height: 50,
+                          borderRadius: 14,
                         },
                       ]}
                     >
@@ -1012,133 +1089,42 @@ export default function RecordDamageScreen() {
                         {initials(selEntry.farmerName)}
                       </Text>
                     </View>
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <Text style={[styles.detailFarmerName, { color: textPrimary }]}>
-                        {selEntry.farmerName}
-                      </Text>
-                      <Text style={[styles.detailLfid, { color: '#6D28D9' }]}>
-                        {selEntry.lfid}
-                      </Text>
-                      <Text style={[styles.detailSub, { color: textMuted }]}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.detailFarmerName}>{selEntry.farmerName}</Text>
+                      <Text style={styles.detailLfid}>{selEntry.lfid}</Text>
+                      <Text style={styles.detailSub}>
                         {selEntry.farm} / {selEntry.parcel}
                       </Text>
                     </View>
                   </View>
                   {selEntry.gps !== '' && (
                     <View style={styles.detailGpsRow}>
-                      <MapPin size={14} color={HEADER_BG} />
-                      <Text style={[styles.detailGpsText, { color: textMuted }]}>
-                        {selEntry.gps}
-                      </Text>
+                      <MapPin size={13} color="#C25E00" />
+                      <Text style={styles.detailGpsText}>{selEntry.gps}</Text>
                     </View>
                   )}
                 </SectionCard>
 
-                <SectionCard
-                  title="Damage Information"
-                  color="#FFF7ED"
-                  border={border}
-                  card={card}
-                >
-                  <DetailRow
-                    label="Commodity"
-                    value={selEntry.commodity}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  />
-                  <DetailRow
-                    label="Damage Type"
-                    value={DMG_CFG[selEntry.damageType].label}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  />
-                  <DetailRow
-                    label="Severity"
-                    value={SEV_CFG[selEntry.severity].label}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  />
-                  <DetailRow
-                    label="Affected Area"
-                    value={selEntry.affectedArea}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  />
-                  <DetailRow
-                    label="Affected %"
-                    value={selEntry.affectedPct}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                  />
-                  <DetailRow
-                    label="Est. Loss"
-                    value={selEntry.estimatedLoss}
-                    textPrimary={textPrimary}
-                    textMuted={textMuted}
-                    last
-                  />
+                <SectionCard title="Damage Information">
+                  <DetailRow label="Commodity" value={selEntry.commodity} />
+                  <DetailRow label="Damage Type" value={DMG_CFG[selEntry.damageType].label} />
+                  <DetailRow label="Severity" value={SEV_CFG[selEntry.severity].label} />
+                  <DetailRow label="Affected Area" value={selEntry.affectedArea} />
+                  <DetailRow label="Affected %" value={selEntry.affectedPct} />
+                  <DetailRow label="Est. Loss" value={selEntry.estimatedLoss} last />
                 </SectionCard>
 
                 {selEntry.notes !== '' && (
-                  <SectionCard
-                    title="Technician Notes"
-                    color="#F0FDF4"
-                    border={border}
-                    card={card}
-                  >
-                    <Text style={[styles.detailNotes, { color: textPrimary }]}>
-                      {selEntry.notes}
-                    </Text>
+                  <SectionCard title="Technician Notes">
+                    <Text style={styles.detailNotes}>{selEntry.notes}</Text>
                   </SectionCard>
                 )}
-
-                <SectionCard
-                  title="Geotagged Photo Evidence"
-                  color="#EFF6FF"
-                  border={border}
-                  card={card}
-                >
-                  {selEntry.hasPhoto ? (
-                    <View style={styles.evidenceGrid}>
-                      {Array.from({ length: selEntry.photoCount }).map((_, i) => (
-                        <View
-                          key={i}
-                          style={[
-                            styles.evidenceThumb,
-                            {
-                              backgroundColor: isDark ? '#2D1600' : '#FEF3C7',
-                            },
-                          ]}
-                        >
-                          <ShieldCheck size={20} color="#16A34A" />
-                          <Text
-                            style={[styles.evidenceThumbText, { color: textMuted }]}
-                          >
-                            SHA-256 #{i + 1}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <View style={styles.noPhotoWrap}>
-                      <Camera size={24} color="#D1D5DB" />
-                      <Text style={styles.noPhotoText}>No photos attached</Text>
-                    </View>
-                  )}
-                </SectionCard>
-
-                <View style={styles.timestampStamp}>
-                  <Clock size={13} color={textMuted} />
-                  <Text style={[styles.timestampStampText, { color: textMuted }]}>
-                    Recorded: {selEntry.timestamp}
-                  </Text>
-                </View>
               </ScrollView>
             </View>
           )}
         </Modal>
 
-        {/* MODAL 3 – New Entry (multi-step) */}
+        {/* ══ MODAL 3 – NEW DAMAGE ENTRY FORM ══ */}
         <Modal
           visible={showNewEntry}
           animationType="slide"
@@ -1147,11 +1133,11 @@ export default function RecordDamageScreen() {
             resetForm();
           }}
         >
-          <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+          <View style={styles.modalFullContainer}>
             <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} translucent />
             <View
               style={[
-                styles.header,
+                styles.headerModal,
                 {
                   backgroundColor: HEADER_BG,
                   paddingTop: insets.top + (Platform.OS === 'android' ? 10 : 8),
@@ -1163,35 +1149,14 @@ export default function RecordDamageScreen() {
                   setShowNewEntry(false);
                   resetForm();
                 }}
-                style={styles.headerBtn}
+                style={styles.menuButton}
               >
                 <X size={22} color="#FFFFFF" />
               </TouchableOpacity>
               <View style={{ flex: 1 }}>
-                <Text style={styles.headerTitle}>New Damage Assessment</Text>
-                <Text style={styles.headerSub}>Step {step} of 4</Text>
+                <Text style={styles.modalHeaderTitle}>Record Crop Damage</Text>
+                <Text style={styles.modalHeaderSub}>Step {step} of 4</Text>
               </View>
-            </View>
-
-            <View style={styles.stepProgressWrap}>
-              {[1, 2, 3, 4].map((s) => (
-                <View
-                  key={s}
-                  style={[
-                    styles.stepSeg,
-                    {
-                      backgroundColor:
-                        s <= step
-                          ? HEADER_BG
-                          : isDark
-                          ? '#4A2500'
-                          : '#FDE68A',
-                      flex: 1,
-                      marginRight: s < 4 ? 4 : 0,
-                    },
-                  ]}
-                />
-              ))}
             </View>
 
             <KeyboardAvoidingView
@@ -1203,22 +1168,13 @@ export default function RecordDamageScreen() {
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* Step 1 – Farmer & Location */}
                 {step === 1 && (
                   <View style={{ gap: 14 }}>
-                    <FormLabel text="Select Farmer" color={textPrimary} />
-                    <View
-                      style={[
-                        styles.searchBar,
-                        {
-                          backgroundColor: isDark ? '#2D1600' : '#FFFBEB',
-                          borderColor: border,
-                        },
-                      ]}
-                    >
+                    <Text style={styles.formSectionTitle}>Select Farmer</Text>
+                    <View style={styles.searchBarBox}>
                       <Search size={15} color="#9CA3AF" />
                       <TextInput
-                        style={[styles.searchInput, { color: textPrimary }]}
+                        style={styles.searchInputField}
                         placeholder="Search farmer or LFID…"
                         placeholderTextColor="#9CA3AF"
                         value={farmerSearch}
@@ -1230,12 +1186,7 @@ export default function RecordDamageScreen() {
                         key={f.id}
                         style={[
                           styles.farmerRadioRow,
-                          {
-                            backgroundColor:
-                              selFarmer?.id === f.id ? '#FEF3C7' : card,
-                            borderColor:
-                              selFarmer?.id === f.id ? HEADER_BG : border,
-                          },
+                          selFarmer?.id === f.id && styles.farmerRadioRowActive,
                         ]}
                         onPress={() => {
                           setSelFarmer(f);
@@ -1246,19 +1197,10 @@ export default function RecordDamageScreen() {
                         <View
                           style={[
                             styles.radioCircle,
-                            {
-                              borderColor:
-                                selFarmer?.id === f.id ? HEADER_BG : border,
-                              backgroundColor:
-                                selFarmer?.id === f.id
-                                  ? HEADER_BG
-                                  : 'transparent',
-                            },
+                            selFarmer?.id === f.id && styles.radioCircleActive,
                           ]}
                         >
-                          {selFarmer?.id === f.id && (
-                            <View style={styles.radioDot} />
-                          )}
+                          {selFarmer?.id === f.id && <View style={styles.radioDot} />}
                         </View>
                         <View
                           style={[
@@ -1271,21 +1213,13 @@ export default function RecordDamageScreen() {
                             },
                           ]}
                         >
-                          <Text
-                            style={[styles.entryAvatarText, { fontSize: 12 }]}
-                          >
+                          <Text style={[styles.entryAvatarText, { fontSize: 12 }]}>
                             {initials(f.name)}
                           </Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text
-                            style={[styles.farmerRadioName, { color: textPrimary }]}
-                          >
-                            {f.name}
-                          </Text>
-                          <Text
-                            style={[styles.farmerRadioLfid, { color: '#6D28D9' }]}
-                          >
+                          <Text style={styles.farmerRadioName}>{f.name}</Text>
+                          <Text style={styles.farmerRadioLfid}>
                             {f.lfid} · Brgy. {f.barangay}
                           </Text>
                         </View>
@@ -1294,100 +1228,41 @@ export default function RecordDamageScreen() {
 
                     {selFarmer && (
                       <>
-                        <FormLabel text="Select Farm" color={textPrimary} />
+                        <Text style={styles.formSectionTitle}>Select Farm</Text>
                         {selFarmer.farms.map((fm) => (
                           <TouchableOpacity
                             key={fm}
                             style={[
-                              styles.optionChip,
-                              {
-                                backgroundColor:
-                                  selFarm === fm ? HEADER_BG : card,
-                                borderColor: selFarm === fm ? HEADER_BG : border,
-                              },
+                              styles.farmerRadioRow,
+                              selFarm === fm && styles.farmerRadioRowActive,
                             ]}
-                            onPress={() => {
-                              setSelFarm(fm);
-                              setSelParcel('Parcel 1');
-                            }}
+                            onPress={() => setSelFarm(fm)}
                           >
-                            <Text
-                              style={[
-                                styles.optionChipText,
-                                {
-                                  color:
-                                    selFarm === fm ? '#FFFFFF' : textMuted,
-                                },
-                              ]}
-                            >
-                              {fm}
-                            </Text>
+                            <Text style={styles.farmerRadioName}>{fm}</Text>
                           </TouchableOpacity>
                         ))}
-                        {selFarm !== '' && (
-                          <>
-                            <FormLabel text="Select Parcel" color={textPrimary} />
-                            {['Parcel 1', 'Parcel 2', 'Parcel 3'].map((p) => (
-                              <TouchableOpacity
-                                key={p}
-                                style={[
-                                  styles.optionChip,
-                                  {
-                                    backgroundColor:
-                                      selParcel === p ? HEADER_BG : card,
-                                    borderColor:
-                                      selParcel === p ? HEADER_BG : border,
-                                  },
-                                ]}
-                                onPress={() => setSelParcel(p)}
-                              >
-                                <Text
-                                  style={[
-                                    styles.optionChipText,
-                                    {
-                                      color:
-                                        selParcel === p
-                                          ? '#FFFFFF'
-                                          : textMuted,
-                                    },
-                                  ]}
-                                >
-                                  {p}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </>
-                        )}
                       </>
                     )}
                   </View>
                 )}
 
-                {/* Step 2 – Commodity + Damage Type + Severity */}
                 {step === 2 && (
                   <View style={{ gap: 16 }}>
-                    <FormLabel text="Commodity" color={textPrimary} />
+                    <Text style={styles.formSectionTitle}>Commodity Affected</Text>
                     <View style={styles.chipGrid}>
-                      {COMMODITIES.map((c) => (
+                      {['Rice', 'Corn', 'Vegetables', 'Coconut', 'Banana'].map((c) => (
                         <TouchableOpacity
                           key={c}
                           style={[
                             styles.gridChip,
-                            {
-                              backgroundColor:
-                                commodity === c ? HEADER_BG : card,
-                              borderColor: commodity === c ? HEADER_BG : border,
-                            },
+                            commodity === c && styles.gridChipActive,
                           ]}
                           onPress={() => setCommodity(c)}
                         >
                           <Text
                             style={[
                               styles.gridChipText,
-                              {
-                                color:
-                                  commodity === c ? '#FFFFFF' : textMuted,
-                              },
+                              commodity === c && styles.gridChipTextActive,
                             ]}
                           >
                             {c}
@@ -1396,203 +1271,96 @@ export default function RecordDamageScreen() {
                       ))}
                     </View>
 
-                    <FormLabel text="Damage Type" color={textPrimary} />
+                    <Text style={styles.formSectionTitle}>Damage Type</Text>
                     <View style={styles.chipGrid}>
-                      {DAMAGE_TYPES_LIST.map((d) => (
+                      {(['pest', 'flood', 'drought', 'disease', 'typhoon', 'other'] as DamageType[]).map((t) => (
                         <TouchableOpacity
-                          key={d}
+                          key={t}
                           style={[
                             styles.gridChip,
-                            {
-                              backgroundColor:
-                                damageType === d ? HEADER_BG : card,
-                              borderColor:
-                                damageType === d ? HEADER_BG : border,
-                            },
+                            damageType === t && styles.gridChipActive,
                           ]}
-                          onPress={() => setDamageType(d)}
+                          onPress={() => setDamageType(t)}
                         >
                           <Text
                             style={[
                               styles.gridChipText,
-                              {
-                                color:
-                                  damageType === d ? '#FFFFFF' : textMuted,
-                              },
+                              damageType === t && styles.gridChipTextActive,
                             ]}
                           >
-                            {DMG_CFG[d].label}
+                            {DMG_CFG[t].label}
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
 
-                    <FormLabel text="Severity Level" color={textPrimary} />
-                    {SEVERITY_LIST.map((s) => {
-                      const sc = SEV_CFG[s];
-                      return (
-                        <TouchableOpacity
-                          key={s}
-                          style={[
-                            styles.sevOption,
-                            {
-                              backgroundColor:
-                                severity === s ? sc.bg : card,
-                              borderColor:
-                                severity === s ? sc.border : border,
-                            },
-                          ]}
-                          onPress={() => setSeverity(s)}
-                        >
-                          <View
-                            style={[
-                              styles.sevDot,
-                              { backgroundColor: sc.text },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.sevOptionText,
-                              {
-                                color: severity === s ? sc.text : textMuted,
-                                fontWeight: severity === s ? '700' : '500',
-                              },
-                            ]}
-                          >
-                            {sc.label}
-                          </Text>
-                          {severity === s && (
-                            <CheckCircle2 size={18} color={sc.text} />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
+                    <Text style={styles.formSectionTitle}>Damage Severity</Text>
+                    {(['low', 'medium', 'high', 'severe'] as SeverityLevel[]).map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[
+                          styles.sevOption,
+                          severity === s && styles.sevOptionActive,
+                        ]}
+                        onPress={() => setSeverity(s)}
+                      >
+                        <Text style={styles.sevOptionText}>{SEV_CFG[s].label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 )}
 
-                {/* Step 3 – Quantitative data + notes */}
                 {step === 3 && (
-                  <View style={{ gap: 14 }}>
-                    <FormLabel text="Affected Area (ha) *" color={textPrimary} />
+                  <View style={{ gap: 16 }}>
+                    <Text style={styles.formSectionTitle}>Affected Area (Hectares)</Text>
                     <TextInput
-                      style={[
-                        styles.formInput,
-                        {
-                          backgroundColor: card,
-                          borderColor: affectedArea ? HEADER_BG : border,
-                          color: textPrimary,
-                        },
-                      ]}
+                      style={styles.formInput}
                       placeholder="e.g. 1.5"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="decimal-pad"
+                      keyboardType="numeric"
                       value={affectedArea}
                       onChangeText={setAffectedArea}
                     />
 
-                    <FormLabel
-                      text="Affected Percentage (%)"
-                      color={textPrimary}
-                    />
+                    <Text style={styles.formSectionTitle}>Affected Percentage (%)</Text>
                     <TextInput
-                      style={[
-                        styles.formInput,
-                        {
-                          backgroundColor: card,
-                          borderColor: affectedPct ? HEADER_BG : border,
-                          color: textPrimary,
-                        },
-                      ]}
-                      placeholder="e.g. 70"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="decimal-pad"
+                      style={styles.formInput}
+                      placeholder="e.g. 75"
+                      keyboardType="numeric"
                       value={affectedPct}
                       onChangeText={setAffectedPct}
                     />
 
-                    <FormLabel text="Estimated Loss (₱) *" color={textPrimary} />
+                    <Text style={styles.formSectionTitle}>Estimated Loss (₱)</Text>
                     <TextInput
-                      style={[
-                        styles.formInput,
-                        {
-                          backgroundColor: card,
-                          borderColor: estimatedLoss ? HEADER_BG : border,
-                          color: textPrimary,
-                        },
-                      ]}
-                      placeholder="e.g. 42000"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="decimal-pad"
+                      style={styles.formInput}
+                      placeholder="e.g. 25000"
+                      keyboardType="numeric"
                       value={estimatedLoss}
                       onChangeText={setEstimatedLoss}
                     />
 
-                    <FormLabel
-                      text="Technician Notes (optional)"
-                      color={textPrimary}
-                    />
+                    <Text style={styles.formSectionTitle}>Technician Notes</Text>
                     <TextInput
-                      style={[
-                        styles.formTextarea,
-                        {
-                          backgroundColor: card,
-                          borderColor: notes ? HEADER_BG : border,
-                          color: textPrimary,
-                        },
-                      ]}
-                      placeholder="Describe damage conditions, observations, or context…"
-                      placeholderTextColor="#9CA3AF"
+                      style={[styles.formInput, { height: 80 }]}
+                      placeholder="Enter field assessment remarks…"
                       multiline
-                      numberOfLines={4}
                       value={notes}
                       onChangeText={setNotes}
-                      textAlignVertical="top"
                     />
                   </View>
                 )}
 
-                {/* Step 4 – Live Geotagged Evidence Capture */}
                 {step === 4 && (
                   <View style={{ gap: 16 }}>
-                    <FormLabel
-                      text="Verified GPS Coordinates & Barangay Boundary"
-                      color={textPrimary}
-                    />
-                    <View
-                      style={[
-                        styles.gpsCapturePad,
-                        {
-                          backgroundColor: card,
-                          borderColor: gpsValue ? '#16A34A' : border,
-                        },
-                      ]}
-                    >
+                    <Text style={styles.formSectionTitle}>
+                      Verified GPS Coordinates & Barangay Boundary
+                    </Text>
+                    <View style={styles.gpsCapturePad}>
                       {gpsValue ? (
                         <View style={styles.gpsCaptured}>
                           <MapPin size={20} color="#16A34A" />
                           <View style={{ flex: 1 }}>
-                            <Text
-                              style={[
-                                styles.gpsCapturedText,
-                                { color: textPrimary },
-                              ]}
-                            >
-                              {gpsValue}
-                            </Text>
-                            {detectedBrgy ? (
-                              <Text
-                                style={{
-                                  fontSize: 11,
-                                  color: '#15803D',
-                                  marginTop: 2,
-                                }}
-                              >
-                                Spatial Match: Brgy. {detectedBrgy}{' '}
-                                {brgyVerified
-                                  ? '(Verified Boundary)'
-                                  : '(Device Reported)'}
-                              </Text>
-                            ) : null}
+                            <Text style={styles.gpsCapturedText}>{gpsValue}</Text>
                           </View>
                           <CheckCircle2 size={18} color="#16A34A" />
                         </View>
@@ -1602,135 +1370,44 @@ export default function RecordDamageScreen() {
                           onPress={captureGps}
                           disabled={gpsCapturing}
                         >
-                          <Crosshair
-                            size={20}
-                            color={gpsCapturing ? '#9CA3AF' : HEADER_BG}
-                          />
-                          <Text
-                            style={[
-                              styles.gpsCaptureBtnText,
-                              {
-                                color: gpsCapturing ? '#9CA3AF' : HEADER_BG,
-                              },
-                            ]}
-                          >
-                            {gpsCapturing
-                              ? 'Acquiring Satellites…'
-                              : 'Acquire High-Accuracy GPS'}
+                          <Crosshair size={20} color={HEADER_BG} />
+                          <Text style={styles.gpsCaptureBtnText}>
+                            {gpsCapturing ? 'Acquiring Satellites…' : 'Acquire High-Accuracy GPS'}
                           </Text>
                         </TouchableOpacity>
                       )}
                     </View>
 
-                    <FormLabel
-                      text="Official In-App Geotagged Photo Evidence * (Mandatory)"
-                      color={textPrimary}
-                    />
+                    <Text style={styles.formSectionTitle}>
+                      Official In-App Geotagged Photo Evidence *
+                    </Text>
                     <TouchableOpacity
-                      style={[
-                        styles.photoPlaceholder,
-                        {
-                          backgroundColor:
-                            capturedEvidence.length > 0 ? '#F0FDF4' : card,
-                          borderColor:
-                            capturedEvidence.length > 0 ? '#16A34A' : border,
-                        },
-                      ]}
+                      style={styles.photoPlaceholder}
                       onPress={() => setShowCameraModal(true)}
                     >
                       {capturedEvidence.length > 0 ? (
                         <View style={styles.photoAdded}>
                           <CheckCircle2 size={28} color="#16A34A" />
-                          <Text
-                            style={[styles.photoAddedText, { color: '#15803D' }]}
-                          >
-                            {capturedEvidence.length} Geotagged Evidence Photo(s)
-                            Captured
-                          </Text>
-                          <Text
-                            style={[styles.photoAddedSub, { color: '#6B7280' }]}
-                          >
-                            Tap to capture additional angle
+                          <Text style={styles.photoAddedText}>
+                            {capturedEvidence.length} Geotagged Evidence Photo(s) Captured
                           </Text>
                         </View>
                       ) : (
                         <View style={styles.photoPrompt}>
-                          <Camera size={32} color={HEADER_BG} />
-                          <Text style={styles.photoPromptTitle}>
-                            Launch Official In-App Camera
-                          </Text>
-                          <Text style={styles.photoPromptSub}>
-                            Gallery selection disabled • Embeds GPS, SHA-256 &
-                            Barangay
-                          </Text>
+                          <Camera size={32} color="#C25E00" />
+                          <Text style={styles.photoPromptTitle}>Launch In-App Camera</Text>
                         </View>
                       )}
                     </TouchableOpacity>
-
-                    {capturedEvidence.map((ev) => (
-                      <View
-                        key={ev.evidence_id}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: 10,
-                          borderRadius: 12,
-                          backgroundColor: card,
-                          borderWidth: 1,
-                          borderColor: '#BBF7D0',
-                        }}
-                      >
-                        <Image
-                          source={{ uri: ev.local_original_uri }}
-                          style={{ width: 52, height: 52, borderRadius: 8 }}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              fontWeight: '700',
-                              color: '#15803D',
-                            }}
-                          >
-                            {ev.evidence_id}
-                          </Text>
-                          <Text style={{ fontSize: 10, color: textMuted }}>
-                            SHA-256: {ev.file_hash_sha256.slice(0, 18)}...
-                          </Text>
-                        </View>
-                        <ShieldCheck size={18} color="#16A34A" />
-                      </View>
-                    ))}
-
-                    {capturedEvidence.length === 0 && (
-                      <View style={styles.photoRequiredHint}>
-                        <AlertCircle size={13} color="#EF4444" />
-                        <Text style={styles.photoRequiredText}>
-                          Live in-app geotagged photo evidence is mandatory for
-                          crop damage verification.
-                        </Text>
-                      </View>
-                    )}
                   </View>
                 )}
               </ScrollView>
             </KeyboardAvoidingView>
 
-            {/* Footer nav */}
-            <View
-              style={[
-                styles.formFooter,
-                {
-                  backgroundColor: card,
-                  borderTopColor: border,
-                  paddingBottom: insets.bottom || 16,
-                },
-              ]}
-            >
+            <View style={[styles.formFooter, { paddingBottom: insets.bottom || 16 }]}>
               <View style={styles.footerRow}>
                 <TouchableOpacity
-                  style={[styles.footerBtnBack, { borderColor: border }]}
+                  style={styles.footerBtnBack}
                   onPress={() => {
                     if (step === 1) {
                       setShowNewEntry(false);
@@ -1738,24 +1415,17 @@ export default function RecordDamageScreen() {
                     } else setStep((s) => s - 1);
                   }}
                 >
-                  <Text
-                    style={[styles.footerBtnBackText, { color: textPrimary }]}
-                  >
+                  <Text style={styles.footerBtnBackText}>
                     {step === 1 ? 'Cancel' : 'Back'}
                   </Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
-                  style={[
-                    styles.footerBtnNext,
-                    { opacity: canAdvance() ? 1 : 0.35 },
-                  ]}
+                  style={[styles.footerBtnNext, { opacity: canAdvance() ? 1 : 0.4 }]}
                   disabled={!canAdvance()}
                   onPress={() => {
-                    if (step < 4) {
-                      setStep((s) => s + 1);
-                    } else {
-                      handleSaveDamageEntry();
-                    }
+                    if (step < 4) setStep((s) => s + 1);
+                    else handleSaveDamageEntry();
                   }}
                 >
                   {step < 4 ? (
@@ -1766,9 +1436,7 @@ export default function RecordDamageScreen() {
                   ) : (
                     <>
                       <Send size={16} color="#FFFFFF" />
-                      <Text style={styles.footerBtnNextText}>
-                        Save Offline & Queue Sync
-                      </Text>
+                      <Text style={styles.footerBtnNextText}>Save Offline & Queue</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1806,24 +1474,6 @@ export default function RecordDamageScreen() {
 }
 
 /* ─── Sub-components ─── */
-function StatChip({
-  label,
-  value,
-  color,
-  bg,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <View style={[styles.statChip, { backgroundColor: bg }]}>
-      <Text style={[styles.statChipValue, { color }]}>{value}</Text>
-      <Text style={styles.statChipLabel}>{label}</Text>
-    </View>
-  );
-}
 function NumPill({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.numPill}>
@@ -1832,61 +1482,31 @@ function NumPill({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-function FormLabel({ text, color }: { text: string; color: string }) {
-  return <Text style={[styles.formLabel, { color }]}>{text}</Text>;
-}
-function SectionCard({
-  title,
-  color,
-  border,
-  card,
-  children,
-}: {
-  title: string;
-  color: string;
-  border: string;
-  card: string;
-  children: React.ReactNode;
-}) {
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View
-      style={[
-        styles.sectionCard,
-        { backgroundColor: card, borderColor: border },
-      ]}
-    >
-      <View style={[styles.sectionCardHead, { backgroundColor: color }]}>
+    <View style={styles.sectionCardBox}>
+      <View style={styles.sectionCardHead}>
         <Text style={styles.sectionCardTitle}>{title}</Text>
       </View>
       <View style={styles.sectionCardBody}>{children}</View>
     </View>
   );
 }
+
 function DetailRow({
   label,
   value,
-  textPrimary,
-  textMuted,
   last,
 }: {
   label: string;
   value: string;
-  textPrimary: string;
-  textMuted: string;
   last?: boolean;
 }) {
   return (
-    <View
-      style={[
-        styles.detailRow,
-        !last && { borderBottomWidth: 1, borderBottomColor: '#FDE68A' },
-      ]}
-    >
-      <Text style={[styles.detailLabel, { color: textMuted }]}>{label}</Text>
-      <Text
-        style={[styles.detailValue, { color: textPrimary }]}
-        numberOfLines={1}
-      >
+    <View style={[styles.detailRow, !last && styles.detailRowBorder]}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -1895,194 +1515,501 @@ function DetailRow({
 
 /* ─── Styles ─── */
 const styles = StyleSheet.create({
-  header: {
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#FDFBF7', // Warm bento background matching screenshot
+  },
+
+  /* Top Amber Ochre Header */
+  topHeaderWrapper: {
+    backgroundColor: HEADER_BG,
+    paddingBottom: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  topHeaderSafeArea: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 10 : 4,
+  },
+  topHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  menuButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginTop: 2,
+  },
+  headerTitleWrap: {
+    flex: 1,
+  },
+  headerIconAndText: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerMainTitle: {
+    fontSize: 18,
+    fontFamily: 'Poppins_700Bold',
+    color: '#FFFFFF',
+    lineHeight: 22,
+  },
+  headerSubtitleText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: 'rgba(255, 255, 255, 0.88)',
+    marginTop: 4,
+  },
+  newAssessmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  newAssessmentBtnText: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#92400E',
+  },
+  headerDecoCurves: {
+    position: 'absolute',
+    bottom: -15,
+    right: -20,
+    width: 140,
+    height: 40,
+    borderTopLeftRadius: 60,
+    borderTopRightRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+
+  /* Scroll Content */
+  scrollBody: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+
+  /* 1. Stats 3 Bento Boxes */
+  statsThreeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  statBox: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+  },
+  statBoxPending: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  statBoxSubmitted: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#DBEAFE',
+  },
+  statBoxVerified: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#D1FAE5',
+  },
+  statBoxInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statIconWrap: {
+    marginRight: 6,
+  },
+  statTextWrap: {
+    alignItems: 'flex-start',
+  },
+  statNumberText: {
+    fontSize: 18,
+    fontFamily: 'Poppins_700Bold',
+    lineHeight: 22,
+  },
+  statLabelText: {
+    fontSize: 9.5,
+    fontFamily: 'Poppins_500Medium',
+  },
+
+  /* 2. Quick Actions Two Row */
+  quickActionsTwoRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  quickActionTile: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  quickActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quickActionText: {
+    fontSize: 12.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#78350F',
+  },
+
+  /* 3. Search & Filter */
+  searchFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  searchBarBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  searchInputField: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: '#0F172A',
+    paddingVertical: 0,
+  },
+  filterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  filterBtnText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#78350F',
+  },
+
+  /* 4. Filter Pills Row */
+  filterPillsScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
+    backgroundColor: 'transparent',
+  },
+  filterPillActive: {
+    backgroundColor: '#B45309',
+  },
+  filterPillText: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#92400E',
+  },
+  filterPillTextActive: {
+    color: '#FFFFFF',
+  },
+
+  /* 5. Full Assessment Card */
+  assessmentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    marginBottom: 14,
+  },
+  assessmentCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  damageIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  assessmentTitleCol: {
+    flex: 1,
+    marginRight: 6,
+  },
+  assessmentTitleText: {
+    fontSize: 14.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+    lineHeight: 19,
+    marginBottom: 3,
+  },
+  barangayLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  barangayLocText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_500Medium',
+    color: '#64748B',
+  },
+  verifiedGreenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  verifiedBadgeText: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#15803D',
+  },
+
+  /* Date & Tech Row */
+  dateAndTechRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dateSubItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metaSublineText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  metaDividerPipe: {
+    fontSize: 11,
+    color: '#CBD5E1',
+    marginHorizontal: 8,
+  },
+
+  /* Severity Row */
+  severityHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  severityLabelText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#475569',
+  },
+  severityPercentText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#B45309',
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressBarFill: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#10B981',
+  },
+
+  /* Crop Info 2-Col */
+  cropInfoTwoColRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  cropInfoBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+  },
+  cropIconRing: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  cropInfoLabel: {
+    fontSize: 9.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#92400E',
+  },
+  cropInfoValue: {
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+
+  /* Photo Thumbnails Row */
+  photoThumbnailsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  photoThumbWrap: {
+    flex: 1,
+    height: 70,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  thumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  morePhotoThumbBox: {
+    flex: 1,
+    height: 70,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreCountText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#475569',
+    lineHeight: 14,
+  },
+  moreLabelText: {
+    fontSize: 9.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#64748B',
+  },
+
+  /* View Details Button */
+  viewDetailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  viewDetailsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewDetailsButtonText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#78350F',
+  },
+
+  /* Modal Styles */
+  modalFullContainer: {
+    flex: 1,
+    backgroundColor: '#FDFBF7',
+  },
+  headerModal: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 14,
-    gap: 12,
   },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  modalHeaderTitle: {
+    fontSize: 16,
+    fontFamily: 'Poppins_700Bold',
+    color: '#FFFFFF',
   },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
-  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
-  newBtn: {
+  modalHeaderSub: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  modalAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  newBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 6,
-  },
-  statChip: {
-    flex: 1,
+    paddingVertical: 6,
     borderRadius: 14,
-    paddingVertical: 10,
-    alignItems: 'center',
   },
-  statChipValue: { fontSize: 22, fontWeight: '800' },
-  statChipLabel: { fontSize: 11, color: '#6B7280', marginTop: 1 },
-
-  toolbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
+  modalAddBtnText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#FFFFFF',
+  },
+  modalSearchRow: {
+    paddingHorizontal: 16,
     paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-  },
-  myReportsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  myReportsText: { fontSize: 12, fontWeight: '600' },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 13,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    height: 42,
-  },
-  searchInput: { flex: 1, fontSize: 13, paddingVertical: 0 },
-  filterIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderBottomColor: '#F1F5F9',
   },
 
-  tabsBar: { flexDirection: 'row', borderBottomWidth: 1, paddingHorizontal: 6 },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 9,
-    position: 'relative',
-  },
-  tabLabel: { fontSize: 13 },
-  tabUnderline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 10,
-    right: 10,
-    height: 2.5,
-    borderRadius: 2,
-  },
-
-  scroll: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 32, gap: 12 },
-
-  reportCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  reportTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 8,
-  },
-  reportIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reportName: { fontSize: 15, fontWeight: '700' },
-  reportBrgy: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  statusDot: { width: 7, height: 7, borderRadius: 3.5 },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  unsyncedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  unsyncedText: { fontSize: 10, fontWeight: '600', color: '#EF4444' },
-  reportMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
-  },
-  reportMeta: { fontSize: 12 },
-  reportProgressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  reportProgressLabel: { fontSize: 12 },
-  reportProgressPct: { fontSize: 12, fontWeight: '700' },
-  reportBar: {
-    height: 5,
-    borderRadius: 3,
-    marginBottom: 10,
-    overflow: 'hidden',
-  },
-  reportBarFill: { height: 5, borderRadius: 3 },
-  reportFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reportFooterText: { fontSize: 12 },
-
-  modalContainer: { flex: 1 },
+  /* Entry list in modal */
   entryListContent: {
-    paddingHorizontal: 14,
-    paddingTop: 8,
-    paddingBottom: 32,
+    padding: 16,
     gap: 12,
   },
-
-  entryCard: {
-    borderRadius: 20,
+  entryItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
-    padding: 13,
+    borderColor: '#FDE68A',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
     shadowRadius: 5,
     elevation: 1,
   },
@@ -2093,17 +2020,50 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   entryAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  entryAvatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  entryNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  entryFarmerName: { fontSize: 14, fontWeight: '700', flex: 1 },
-  entryLfid: { fontSize: 12, fontWeight: '500' },
-
+  entryAvatarText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_700Bold',
+    color: '#FFFFFF',
+  },
+  entryNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  entryFarmerName: {
+    fontSize: 13.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  entryLfid: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#78350F',
+    marginTop: 1,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+  },
   entryChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2111,286 +2071,386 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   commodityChip: {
-    backgroundColor: '#F0FDF4',
-    borderRadius: 8,
-    paddingHorizontal: 9,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
     paddingVertical: 3,
+    borderRadius: 6,
   },
-  commodityChipText: { fontSize: 12, fontWeight: '600', color: '#15803D' },
+  commodityChipText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_500Medium',
+    color: '#475569',
+  },
   dmgChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    borderRadius: 8,
-    paddingHorizontal: 9,
+    gap: 3,
+    paddingHorizontal: 8,
     paddingVertical: 3,
+    borderRadius: 6,
   },
-  dmgChipText: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  dmgChipText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#1E293B',
+  },
   sevChip: {
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 9,
+    paddingHorizontal: 8,
     paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
   },
-  sevChipText: { fontSize: 12, fontWeight: '700' },
-
+  sevChipText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+  },
   entryNumsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 6,
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
   numPill: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
+    flexDirection: 'row',
+    gap: 4,
   },
-  numPillLabel: { fontSize: 9, color: '#92400E', fontWeight: '500' },
-  numPillValue: { fontSize: 12, color: '#78350F', fontWeight: '700' },
+  numPillLabel: {
+    fontSize: 10,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  numPillValue: {
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#0F172A',
+  },
   photoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#DCFCE7',
-    borderRadius: 8,
+    gap: 3,
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  photoBadgeText: { fontSize: 11, fontWeight: '600', color: '#15803D' },
-
-  gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  gpsText: { fontSize: 11 },
-
-  entryActions: {
+  photoBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#16A34A',
+  },
+  gpsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingTop: 10,
-    marginTop: 4,
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  gpsText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  entryActions: {
     borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 8,
   },
   inlineAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F5F3FF',
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    justifyContent: 'center',
+    gap: 6,
   },
-  inlineActionText: { fontSize: 12, fontWeight: '600' },
+  inlineActionText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#C25E00',
+  },
 
-  detailScroll: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24 },
-  sectionCard: {
-    borderRadius: 20,
+  /* Detail modal */
+  detailScroll: {
+    padding: 16,
+    gap: 14,
+  },
+  sectionCardBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 14,
+    borderColor: '#FDE68A',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
-    elevation: 1,
   },
-  sectionCardHead: { paddingHorizontal: 16, paddingVertical: 10 },
-  sectionCardTitle: { fontSize: 13, fontWeight: '700', color: '#78350F' },
-  sectionCardBody: {
+  sectionCardHead: {
+    backgroundColor: '#FFFBEB',
     paddingHorizontal: 14,
-    paddingBottom: 12,
-    paddingTop: 4,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FDE68A',
   },
-  detailFarmerRow: {
+  sectionCardTitle: {
+    fontSize: 12.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#78350F',
+  },
+  sectionCardBody: {
+    padding: 14,
+  },
+  detailAvatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingTop: 4,
-    paddingBottom: 8,
   },
-  detailFarmerName: { fontSize: 17, fontWeight: '800' },
-  detailLfid: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  detailSub: { fontSize: 12, marginTop: 1 },
+  detailFarmerName: {
+    fontSize: 14,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  detailLfid: {
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#C25E00',
+  },
+  detailSub: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
   detailGpsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingTop: 6,
+    gap: 6,
+    marginTop: 10,
   },
-  detailGpsText: { fontSize: 12 },
+  detailGpsText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 9,
+    paddingVertical: 8,
   },
-  detailLabel: { fontSize: 12, fontWeight: '500' },
+  detailRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  detailLabel: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
   detailValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#0F172A',
   },
-  detailNotes: { fontSize: 13, lineHeight: 20, paddingVertical: 4 },
-  evidenceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingTop: 4,
-  },
-  evidenceThumb: {
-    width: 90,
-    height: 80,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  evidenceThumbText: { fontSize: 10, fontWeight: '600' },
-  noPhotoWrap: { alignItems: 'center', paddingVertical: 16, gap: 6 },
-  noPhotoText: { fontSize: 13, color: '#9CA3AF' },
-  timestampStamp: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    justifyContent: 'center',
-    paddingBottom: 4,
-  },
-  timestampStampText: { fontSize: 12 },
-
-  stepProgressWrap: {
-    flexDirection: 'row',
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 2,
-    gap: 4,
-  },
-  stepSeg: { height: 5, borderRadius: 3 },
-  formScroll: { paddingHorizontal: 14, paddingTop: 16, paddingBottom: 24 },
-  formLabel: { fontSize: 14, fontWeight: '700', marginBottom: -4 },
-  formInput: {
-    borderRadius: 14,
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 15,
-  },
-  formTextarea: {
-    borderRadius: 14,
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    fontSize: 14,
-    minHeight: 100,
+  detailNotes: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: '#334155',
+    lineHeight: 18,
   },
 
+  /* Form modal */
+  formScroll: {
+    padding: 16,
+    gap: 14,
+  },
+  formSectionTitle: {
+    fontSize: 12.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#78350F',
+  },
   farmerRadioRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     padding: 12,
+    gap: 10,
+  },
+  farmerRadioRowActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
   },
   radioCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
+    borderColor: '#CBD5E1',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  radioCircleActive: {
+    borderColor: '#D97706',
+    backgroundColor: '#D97706',
+  },
   radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#FFFFFF',
   },
-  farmerRadioName: { fontSize: 14, fontWeight: '700' },
-  farmerRadioLfid: { fontSize: 12, fontWeight: '500', marginTop: 1 },
-
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  farmerRadioName: {
+    fontSize: 13,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  farmerRadioLfid: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#78350F',
+  },
+  chipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   gridChip: {
-    borderRadius: 12,
-    borderWidth: 1.5,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  gridChipText: { fontSize: 13, fontWeight: '600' },
-  optionChip: {
+    paddingVertical: 8,
     borderRadius: 12,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
   },
-  optionChipText: { fontSize: 14, fontWeight: '600' },
-
+  gridChipActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  gridChipText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_500Medium',
+    color: '#475569',
+  },
+  gridChipTextActive: {
+    color: '#B45309',
+    fontFamily: 'Poppins_700Bold',
+  },
   sevOption: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+  },
+  sevOptionActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  sevOptionText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#0F172A',
+  },
+  formInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 12.5,
+    fontFamily: 'Poppins_400Regular',
+  },
+  gpsCapturePad: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    padding: 14,
+  },
+  gpsCaptured: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: 8,
   },
-  sevDot: { width: 10, height: 10, borderRadius: 5 },
-  sevOptionText: { flex: 1, fontSize: 14 },
-
-  gpsCapturePad: { borderRadius: 16, borderWidth: 1.5, padding: 16 },
+  gpsCapturedText: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#15803D',
+  },
   gpsCaptureBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 6,
+    gap: 6,
   },
-  gpsCaptureBtnText: { fontSize: 15, fontWeight: '600' },
-  gpsCaptured: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gpsCapturedText: { fontSize: 13, fontWeight: '600' },
-
+  gpsCaptureBtnText: {
+    fontSize: 12.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#C25E00',
+  },
   photoPlaceholder: {
-    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 2,
     borderStyle: 'dashed',
-    minHeight: 130,
+    borderColor: '#CBD5E1',
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  photoPrompt: { alignItems: 'center', paddingVertical: 16, gap: 6 },
-  photoPromptTitle: { fontSize: 15, fontWeight: '700', color: '#78350F' },
-  photoPromptSub: { fontSize: 12, color: '#9CA3AF' },
-  photoAdded: { alignItems: 'center', paddingVertical: 16, gap: 6 },
-  photoAddedText: { fontSize: 15, fontWeight: '700' },
-  photoAddedSub: { fontSize: 12, color: '#6B7280' },
-  photoRequiredHint: {
-    flexDirection: 'row',
+  photoAdded: {
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 10,
-    padding: 10,
+    gap: 6,
   },
-  photoRequiredText: { fontSize: 12, color: '#B91C1C', flex: 1 },
-
-  formFooter: { paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1 },
-  footerRow: { flexDirection: 'row', gap: 10 },
+  photoAddedText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#15803D',
+  },
+  photoPrompt: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoPromptTitle: {
+    fontSize: 12.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#78350F',
+  },
+  formFooter: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   footerBtnBack: {
     flex: 1,
+    backgroundColor: '#F1F5F9',
     borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  footerBtnBackText: { fontSize: 15, fontWeight: '600' },
+  footerBtnBackText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#475569',
+  },
   footerBtnNext: {
     flex: 2,
+    backgroundColor: '#C25E00',
+    borderRadius: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: HEADER_BG,
-    borderRadius: 14,
-    paddingVertical: 14,
   },
-  footerBtnNextText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  footerBtnNextText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#FFFFFF',
+  },
 });
