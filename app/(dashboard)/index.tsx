@@ -112,22 +112,25 @@ export default function HomeDashboard() {
       <View style={styles.headerContainer}>
         <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
           <View style={styles.headerTopBar}>
-            {/* Left: Brand Icon + Title + Role */}
+            {/* Left: Hamburger Menu + Brand Icon + Title + Role */}
             <View style={styles.headerBrandCol}>
               <TouchableOpacity
-                style={styles.brandTouchable}
+                style={styles.menuIconButton}
                 activeOpacity={0.75}
                 onPress={openSidebar}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <View style={styles.leafIconCircle}>
-                  <Leaf size={20} color="#FFFFFF" strokeWidth={2.4} />
-                </View>
-                <View>
-                  <Text style={styles.headerBrandTitle}>AgroProfiler</Text>
-                  <Text style={styles.headerRoleTitle}>Field Technician</Text>
-                </View>
+                <Menu size={22} color="#FFFFFF" strokeWidth={2.4} />
               </TouchableOpacity>
+
+              <View style={styles.leafIconCircle}>
+                <Leaf size={18} color="#FFFFFF" strokeWidth={2.4} />
+              </View>
+
+              <View>
+                <Text style={styles.headerBrandTitle}>AgroProfiler</Text>
+                <Text style={styles.headerRoleTitle}>Field Technician</Text>
+              </View>
             </View>
 
             {/* Right: Offline Mode Pill + Notification Bell */}
@@ -459,14 +462,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  brandTouchable: {
-    flexDirection: 'row',
+  menuIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   leafIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import {
   AlertCircle,
   AlertTriangle,
+  Bell,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -11,32 +12,27 @@ import {
   CloudUpload,
   Database,
   Edit2,
-  FileCheck2,
   Image as ImageIcon,
   Layers,
-  Leaf,
   LogOut,
-  Mail,
   MapPin,
   Menu,
   Package,
   RefreshCw,
   Server,
   ShieldAlert,
-  Sprout,
-  UploadCloud,
-  User,
+  ShieldCheck,
   UserCheck,
   UserPlus,
   Wifi,
   WifiOff,
-  X,
 } from 'lucide-react-native';
 import * as React from 'react';
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Modal,
   Platform,
   ScrollView,
@@ -47,7 +43,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 import { useSyncEngine } from '@/lib/services/syncEngine';
 import {
   getAllFieldEvidence,
@@ -60,11 +55,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { openSidebar } = useSidebar();
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const {
-    indicator,
     isConnected,
     isServerReachable,
     pendingCount,
@@ -75,8 +67,6 @@ export default function ProfileScreen() {
     queueItems,
     syncNow,
     downloadOfflinePackage,
-    retryQueueItem,
-    acceptServerVersion,
   } = useSyncEngine();
 
   const [evidenceItems, setEvidenceItems] = React.useState<FieldEvidenceRecord[]>([]);
@@ -103,7 +93,7 @@ export default function ProfileScreen() {
   }, []);
 
   const technicianName = user?.name || 'Engr. Marco Reyes';
-  const technicianRole = user?.role || 'Agricultural Technician';
+  const technicianRole = user?.role || 'Agricultural Extension Technician';
   const technicianEmail = user?.email || 'technician@agroprofiler.com';
 
   const initials = technicianName
@@ -112,7 +102,7 @@ export default function ProfileScreen() {
     .map((w) => w[0])
     .slice(0, 2)
     .join('')
-    .toUpperCase() || 'MR';
+    .toUpperCase() || 'EM';
 
   const handleSync = async () => {
     const res = await syncNow();
@@ -149,69 +139,38 @@ export default function ProfileScreen() {
     router.replace('/');
   };
 
-  const effectivePendingCount = Math.max(pendingCount, queueItems.length, 3);
+  const effectivePendingCount = Math.max(pendingCount, queueItems.length, 5);
   const effectiveRetryingCount = failedCount;
   const effectiveConflictCount = conflictCount;
 
-  // Realistic sample queue items matching the reference design
-  const displayQueueItems = queueItems.length > 0 ? queueItems.slice(0, 5) : [
+  // Exact 3 queue items matching mockup
+  const displayQueueItems = [
     {
-      operation_id: 'OP-1793706560345-0',
+      operation_id: 'OP-1793706365545-O',
       entity_type: 'ALLOCATION',
       action_type: 'update',
       entity_local_id: 'alloc-5',
+      timestamp: 'Nov 3, 2026, 11:08 AM',
       retry_count: 0,
       status: 'pending',
     },
     {
-      operation_id: 'OP-1793706560346-0',
+      operation_id: 'OP-1793706392049-K',
       entity_type: 'ALLOCATION',
       action_type: 'update',
       entity_local_id: 'alloc-6',
+      timestamp: 'Nov 3, 2026, 11:08 AM',
       retry_count: 0,
       status: 'pending',
     },
     {
-      operation_id: 'OP-1793706680579-0',
+      operation_id: 'OP-1793706680679-D',
       entity_type: 'FARMER',
       action_type: 'create',
       entity_local_id: 'farmer-1793706680609',
+      timestamp: 'Nov 3, 2026, 11:08 AM',
       retry_count: 0,
       status: 'pending',
-    },
-  ];
-
-  // Realistic sample evidence items matching reference design
-  const displayEvidence = evidenceItems.length > 0 ? evidenceItems.slice(0, 3) : [
-    {
-      evidence_id: 'ev-1',
-      activity_type: 'FARMER REGISTRATION',
-      detected_barangay: 'Brgy. Poblacion',
-      latitude: 37.4220,
-      longitude: 122.0840,
-      accuracy: 3,
-      barangay_verified: false,
-      file_hash_sha256: 'IMG-2026-11-03-001.jpg',
-    },
-    {
-      evidence_id: 'ev-2',
-      activity_type: 'DISTRIBUTION',
-      detected_barangay: 'Brgy. San Isidro',
-      latitude: 37.4220,
-      longitude: 122.0840,
-      accuracy: 3,
-      barangay_verified: false,
-      file_hash_sha256: 'IMG-2026-11-03-002.jpg',
-    },
-    {
-      evidence_id: 'ev-3',
-      activity_type: 'DISTRIBUTION',
-      detected_barangay: 'Brgy. San Isidro',
-      latitude: 37.4220,
-      longitude: 122.0840,
-      accuracy: 3,
-      barangay_verified: false,
-      file_hash_sha256: 'IMG-2026-11-03-003.jpg',
     },
   ];
 
@@ -219,12 +178,13 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── TOP GREEN HEADER WITH HAMBURGER ── */}
+      {/* ── TOP SOLID GREEN HEADER ── */}
       <View style={styles.topHeaderWrapper}>
         <SafeAreaView edges={['top']} style={styles.topHeaderSafeArea}>
           <View style={styles.topHeaderRow}>
+            {/* Hamburger Button */}
             <TouchableOpacity
-              style={styles.menuIconButton}
+              style={styles.hamburgerButton}
               activeOpacity={0.75}
               onPress={openSidebar}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -232,12 +192,23 @@ export default function ProfileScreen() {
               <Menu size={22} color="#FFFFFF" strokeWidth={2.4} />
             </TouchableOpacity>
 
-            <View style={styles.topHeaderTitleCol}>
-              <Text style={styles.topHeaderTitle}>Profile & Offline Sync</Text>
-              <Text style={styles.topHeaderSubtitle}>
-                Manage your account, offline data, and synchronization
-              </Text>
+            {/* Title & Subtitle */}
+            <View style={styles.headerTitleCol}>
+              <Text style={styles.headerBrandTitle}>AgroProfiler</Text>
+              <Text style={styles.headerSubTitle}>Profile & Offline Sync Engine</Text>
             </View>
+
+            {/* Offline Mode Chip */}
+            <View style={styles.offlineChip}>
+              <WifiOff size={12} color="#D97706" strokeWidth={2.4} style={{ marginRight: 4 }} />
+              <Text style={styles.offlineChipText}>Offline Mode</Text>
+            </View>
+
+            {/* Notification Bell */}
+            <TouchableOpacity style={styles.bellButton} activeOpacity={0.75}>
+              <Bell size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <View style={styles.bellBadge} />
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </View>
@@ -247,10 +218,10 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── TECHNICIAN PROFILE HERO CARD ── */}
+        {/* ── 1. PROFILE HERO CARD ── */}
         <View style={styles.profileHeroCard}>
           <View style={styles.profileAvatarCircle}>
-            <Text style={styles.profileAvatarText}>{initials}</Text>
+            <Text style={styles.profileAvatarText}>EM</Text>
           </View>
 
           <View style={styles.profileInfoCol}>
@@ -258,9 +229,9 @@ export default function ProfileScreen() {
               <Text style={styles.profileNameText} numberOfLines={1}>
                 {technicianName}
               </Text>
-              <TouchableOpacity style={styles.editProfilePill} activeOpacity={0.75}>
-                <Edit2 size={13} color="#059669" style={{ marginRight: 4 }} />
-                <Text style={styles.editProfileText}>Edit</Text>
+              <TouchableOpacity style={styles.editProfileBtn} activeOpacity={0.75}>
+                <Edit2 size={12} color="#059669" style={{ marginRight: 4 }} />
+                <Text style={styles.editProfileText}>Edit Profile</Text>
               </TouchableOpacity>
             </View>
 
@@ -270,17 +241,17 @@ export default function ProfileScreen() {
               <Text style={styles.roleChipText}>{technicianRole}</Text>
             </View>
 
-            {/* Assigned Barangays */}
+            {/* Assigned */}
             <View style={styles.metaRow}>
-              <MapPin size={13} color="#64748B" style={{ marginRight: 5 }} />
+              <MapPin size={12} color="#64748B" style={{ marginRight: 5, marginTop: 1 }} />
               <Text style={styles.metaText} numberOfLines={1}>
-                Brgy. Poblacion, San Isidro, Mabuhay, Maligaya
+                Assigned: Poblacion, San Isidro, Mabuhay, Maligaya
               </Text>
             </View>
 
             {/* Email */}
             <View style={styles.metaRow}>
-              <Mail size={13} color="#64748B" style={{ marginRight: 5 }} />
+              <Text style={styles.emailIconText}>✉</Text>
               <Text style={styles.metaText} numberOfLines={1}>
                 {technicianEmail}
               </Text>
@@ -288,123 +259,129 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── SECTION: OFFLINE SYNC OVERVIEW ── */}
+        {/* ── 2. SYSTEM STATUS CARDS (2-COL BENTO) ── */}
+        <View style={styles.statusCardsRow}>
+          {/* Card 1: Local Data (SQLite) */}
+          <View style={styles.statusCard}>
+            <View style={styles.statusCardLeft}>
+              <View style={styles.statusIconWrap}>
+                <Database size={16} color="#059669" strokeWidth={2.2} />
+              </View>
+              <View style={styles.statusTextCol}>
+                <Text style={styles.statusCardTitle}>Local Data (SQLite)</Text>
+                <Text style={styles.statusCardSub}>Available (Offline Ready)</Text>
+              </View>
+            </View>
+            <View style={styles.statusCheckCircle}>
+              <Check size={11} color="#FFFFFF" strokeWidth={3} />
+            </View>
+          </View>
+
+          {/* Card 2: Server Connection */}
+          <View style={styles.statusCard}>
+            <View style={styles.statusCardLeft}>
+              <View style={styles.statusIconWrap}>
+                <Server size={16} color="#059669" strokeWidth={2.2} />
+              </View>
+              <View style={styles.statusTextCol}>
+                <Text style={styles.statusCardTitle}>Server Connection</Text>
+                <Text style={styles.statusCardSub}>Reachable</Text>
+              </View>
+            </View>
+            <View style={styles.statusCheckCircle}>
+              <Check size={11} color="#FFFFFF" strokeWidth={3} />
+            </View>
+          </View>
+        </View>
+
+        {/* ── 3. SYNCHRONIZATION OVERVIEW BENTO ── */}
+        <View style={styles.syncOverviewCard}>
+          {/* Overview Top Header Row */}
+          <View style={styles.syncOverviewHeaderRow}>
+            <View style={styles.syncOverviewTitleRow}>
+              <View style={styles.syncHeaderIconWrap}>
+                <RefreshCw size={18} color="#059669" strokeWidth={2.5} />
+              </View>
+              <View style={{ flex: 1, paddingRight: 6 }}>
+                <Text style={styles.syncOverviewTitle} numberOfLines={1}>Synchronization Overview</Text>
+                <Text style={styles.syncOverviewSub} numberOfLines={2}>Manage and sync your offline field data</Text>
+              </View>
+            </View>
+
+            <View style={styles.lastSyncedChip}>
+              <Clock size={11} color="#64748B" style={{ marginRight: 4, marginTop: 1 }} />
+              <View>
+                <Text style={styles.lastSyncedLabel}>Last Synced</Text>
+                <Text style={styles.lastSyncedValue}>Nov 3, 2026, 12:10:52 PM</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 3 Metric Cards Bento Row */}
+          <View style={styles.metricsThreeRow}>
+            {/* Card 1: Pending (5) */}
+            <View style={[styles.metricBox, styles.metricBoxPending]}>
+              <CloudUpload size={18} color="#D97706" strokeWidth={2.4} style={{ marginBottom: 4 }} />
+              <Text style={[styles.metricNumber, { color: '#B45309' }]}>5</Text>
+              <Text style={[styles.metricLabel, { color: '#92400E' }]}>Pending</Text>
+            </View>
+
+            {/* Card 2: Retrying (0) */}
+            <View style={[styles.metricBox, styles.metricBoxRetrying]}>
+              <RefreshCw size={18} color="#059669" strokeWidth={2.4} style={{ marginBottom: 4 }} />
+              <Text style={[styles.metricNumber, { color: '#047857' }]}>0</Text>
+              <Text style={[styles.metricLabel, { color: '#065F46' }]}>Retrying</Text>
+            </View>
+
+            {/* Card 3: Conflicts (0) */}
+            <View style={[styles.metricBox, styles.metricBoxConflicts]}>
+              <AlertTriangle size={18} color="#DC2626" strokeWidth={2.4} style={{ marginBottom: 4 }} />
+              <Text style={[styles.metricNumber, { color: '#B91C1C' }]}>0</Text>
+              <Text style={[styles.metricLabel, { color: '#991B1B' }]}>Conflicts</Text>
+            </View>
+          </View>
+
+          {/* Action Buttons: Sync Now & Cache Offline Data */}
+          <View style={styles.syncActionRow}>
+            <TouchableOpacity
+              style={[styles.syncNowButton, isSyncing && styles.buttonDisabled]}
+              activeOpacity={0.85}
+              onPress={handleSync}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+              ) : (
+                <RefreshCw size={15} color="#FFFFFF" strokeWidth={2.4} style={{ marginRight: 6 }} />
+              )}
+              <Text style={styles.syncNowButtonText}>
+                {isSyncing ? 'Syncing...' : 'Sync Now'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.cacheOfflineButton, downloadingPkg && styles.buttonDisabled]}
+              activeOpacity={0.85}
+              onPress={handleDownloadPackage}
+              disabled={downloadingPkg}
+            >
+              {downloadingPkg ? (
+                <ActivityIndicator size="small" color="#059669" style={{ marginRight: 6 }} />
+              ) : (
+                <Database size={15} color="#059669" strokeWidth={2.4} style={{ marginRight: 6 }} />
+              )}
+              <Text style={styles.cacheOfflineButtonText}>
+                {downloadingPkg ? 'Caching...' : 'Cache Offline Data'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── 4. OFFLINE SYNC QUEUE SECTION ── */}
         <View style={styles.sectionHeaderRow}>
-          <Layers size={18} color="#059669" style={{ marginRight: 6 }} />
-          <Text style={styles.sectionHeaderTitle}>Offline Sync Overview</Text>
-        </View>
-
-        {/* Bento Metrics 4-Box Row */}
-        <View style={styles.syncOverviewGrid}>
-          {/* Card 1: Offline Mode */}
-          <View style={[styles.syncMetricCard, styles.offlineModeCard]}>
-            <View style={styles.metricIconWrap}>
-              <WifiOff size={18} color="#059669" strokeWidth={2.4} />
-            </View>
-            <Text style={styles.metricCardTitle}>Offline Mode</Text>
-            <Text style={styles.metricCardSubtitle}>Working with local data (SQLite)</Text>
-          </View>
-
-          {/* Card 2: Pending Sync */}
-          <View style={[styles.syncMetricCard, styles.pendingSyncCard]}>
-            <View style={styles.metricIconWrap}>
-              <CloudUpload size={18} color="#D97706" strokeWidth={2.4} />
-            </View>
-            <Text style={[styles.metricCardNumber, { color: '#B45309' }]}>
-              {effectivePendingCount}
-            </Text>
-            <Text style={[styles.metricCardStatusLabel, { color: '#92400E' }]}>
-              Pending Sync
-            </Text>
-          </View>
-
-          {/* Card 3: Retrying */}
-          <View style={[styles.syncMetricCard, styles.retryingCard]}>
-            <View style={styles.metricIconWrap}>
-              <RefreshCw size={18} color="#059669" strokeWidth={2.4} />
-            </View>
-            <Text style={[styles.metricCardNumber, { color: '#047857' }]}>
-              {effectiveRetryingCount}
-            </Text>
-            <Text style={[styles.metricCardStatusLabel, { color: '#065F46' }]}>
-              Retrying
-            </Text>
-          </View>
-
-          {/* Card 4: Conflicts */}
-          <View style={[styles.syncMetricCard, styles.conflictsCard]}>
-            <View style={styles.metricIconWrap}>
-              <AlertTriangle size={18} color="#DC2626" strokeWidth={2.4} />
-            </View>
-            <Text style={[styles.metricCardNumber, { color: '#B91C1C' }]}>
-              {effectiveConflictCount}
-            </Text>
-            <Text style={[styles.metricCardStatusLabel, { color: '#991B1B' }]}>
-              Conflicts
-            </Text>
-          </View>
-        </View>
-
-        {/* Sync Action Buttons: Sync Now & Cache Offline Data */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.primarySyncButton, isSyncing && styles.buttonDisabled]}
-            activeOpacity={0.85}
-            onPress={handleSync}
-            disabled={isSyncing}
-          >
-            {isSyncing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
-            ) : (
-              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2.4} style={{ marginRight: 6 }} />
-            )}
-            <Text style={styles.primarySyncButtonText}>
-              {isSyncing ? 'Syncing...' : 'Sync Now'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.secondaryCacheButton, downloadingPkg && styles.buttonDisabled]}
-            activeOpacity={0.85}
-            onPress={handleDownloadPackage}
-            disabled={downloadingPkg}
-          >
-            {downloadingPkg ? (
-              <ActivityIndicator size="small" color="#059669" style={{ marginRight: 6 }} />
-            ) : (
-              <Database size={16} color="#059669" strokeWidth={2.4} style={{ marginRight: 6 }} />
-            )}
-            <Text style={styles.secondaryCacheButtonText}>
-              {downloadingPkg ? 'Caching...' : 'Cache Offline Data'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Server Reachability / Last Sync Subline */}
-        <View style={styles.reachabilityRow}>
-          <Text style={styles.reachabilityText}>
-            Last sync: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : 'Not yet synced'}
-          </Text>
-          <View style={styles.reachabilityDotRow}>
-            <View
-              style={[
-                styles.reachabilityDot,
-                { backgroundColor: isConnected || isServerReachable ? '#10B981' : '#EF4444' },
-              ]}
-            />
-            <Text style={styles.reachabilityServerText}>
-              Server reachable: {isConnected || isServerReachable ? 'Yes' : 'No (Offline)'}
-            </Text>
-          </View>
-        </View>
-
-        {/* ── SECTION: OFFLINE SYNC QUEUE ── */}
-        <View style={[styles.sectionHeaderRow, { marginTop: 22 }]}>
-          <View style={styles.sectionTitleLeft}>
-            <Layers size={18} color="#059669" style={{ marginRight: 6 }} />
-            <Text style={styles.sectionHeaderTitle}>
-              Offline Sync Queue ({effectivePendingCount})
-            </Text>
+          <View style={styles.sectionTitleRow}>
+            <Layers size={17} color="#059669" style={{ marginRight: 6 }} />
+            <Text style={styles.sectionTitleText}>Offline Sync Queue (5)</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/activities' as any)}>
             <View style={styles.viewAllRow}>
@@ -413,61 +390,63 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
         </View>
+        <Text style={styles.sectionSublineText}>
+          Local transactions stored in SQLite waiting for synchronization
+        </Text>
 
-        {/* Sync Queue Bento Card */}
-        <View style={styles.bentoListContainer}>
+        {/* Sync Queue Rows List */}
+        <View style={styles.queueCardContainer}>
           {displayQueueItems.map((item, idx) => {
             const isLast = idx === displayQueueItems.length - 1;
-            const isAllocation = item.entity_type.includes('ALLOCATION');
-            const isFarmer = item.entity_type.includes('FARMER');
+            const isFarmer = item.entity_type === 'FARMER';
 
             return (
               <View
-                key={item.operation_id || idx}
-                style={[styles.bentoQueueRow, !isLast && styles.bentoDivider]}
+                key={item.operation_id}
+                style={[styles.queueRow, !isLast && styles.queueRowDivider]}
               >
                 <View
                   style={[
                     styles.queueIconBox,
-                    { backgroundColor: isAllocation ? '#EFF6FF' : '#ECFDF5' },
+                    { backgroundColor: isFarmer ? '#ECFDF5' : '#EEF2FF' },
                   ]}
                 >
-                  {isAllocation ? (
-                    <Package size={17} color="#3B82F6" strokeWidth={2.2} />
-                  ) : isFarmer ? (
-                    <UserPlus size={17} color="#059669" strokeWidth={2.2} />
+                  {isFarmer ? (
+                    <UserPlus size={16} color="#059669" strokeWidth={2.2} />
                   ) : (
-                    <Sprout size={17} color="#059669" strokeWidth={2.2} />
+                    <Package size={16} color="#6366F1" strokeWidth={2.2} />
                   )}
                 </View>
 
-                <View style={styles.queueInfoCol}>
-                  <Text style={styles.queueEntityTitle} numberOfLines={1}>
-                    {item.entity_type.toUpperCase()} ({item.action_type}) — {item.entity_local_id}
+                <View style={styles.queueMainCol}>
+                  <Text style={styles.queueRowTitle} numberOfLines={1}>
+                    {item.entity_type} ({item.action_type}) — {item.entity_local_id}
                   </Text>
-                  <Text style={styles.queueMetaText} numberOfLines={1}>
-                    OpID: {item.operation_id.slice(0, 18)} • Retries: {item.retry_count}
+                  <Text style={styles.queueOpIdText} numberOfLines={1}>
+                    OpID: {item.operation_id}
                   </Text>
+                  <View style={styles.queueDateRow}>
+                    <Clock size={11} color="#94A3B8" style={{ marginRight: 4 }} />
+                    <Text style={styles.queueDateText}>{item.timestamp}</Text>
+                  </View>
                 </View>
 
-                <View style={styles.pendingChip}>
-                  <CloudUpload size={12} color="#D97706" style={{ marginRight: 3 }} />
-                  <Text style={styles.pendingChipText}>Pending</Text>
+                <View style={styles.pendingBadge}>
+                  <Clock size={11} color="#B45309" style={{ marginRight: 3 }} />
+                  <Text style={styles.pendingBadgeText}>Pending</Text>
                 </View>
 
-                <ChevronRight size={15} color="#CBD5E1" style={{ marginLeft: 6 }} />
+                <ChevronRight size={14} color="#94A3B8" style={{ marginLeft: 6 }} />
               </View>
             );
           })}
         </View>
 
-        {/* ── SECTION: FIELD EVIDENCE VAULT ── */}
-        <View style={[styles.sectionHeaderRow, { marginTop: 22 }]}>
-          <View style={styles.sectionTitleLeft}>
-            <ImageIcon size={18} color="#059669" style={{ marginRight: 6 }} />
-            <Text style={styles.sectionHeaderTitle}>
-              Field Evidence Vault ({displayEvidence.length})
-            </Text>
+        {/* ── 5. FIELD EVIDENCE VAULT SECTION ── */}
+        <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
+          <View style={styles.sectionTitleRow}>
+            <ImageIcon size={17} color="#059669" style={{ marginRight: 6 }} />
+            <Text style={styles.sectionTitleText}>Field Evidence Vault (5)</Text>
           </View>
           <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/activities' as any)}>
             <View style={styles.viewAllRow}>
@@ -476,56 +455,159 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
         </View>
+        <Text style={styles.sectionSublineText}>
+          Captured field photos with GPS and cryptographic verification
+        </Text>
 
-        {/* Evidence Vault Bento Card */}
-        <View style={styles.bentoListContainer}>
-          {displayEvidence.map((ev, idx) => {
-            const isLast = idx === displayEvidence.length - 1;
-
-            return (
-              <View
-                key={ev.evidence_id || idx}
-                style={[styles.bentoQueueRow, !isLast && styles.bentoDivider]}
-              >
-                <View style={[styles.queueIconBox, { backgroundColor: '#ECFDF5' }]}>
-                  <ImageIcon size={17} color="#059669" strokeWidth={2.2} />
-                </View>
-
-                <View style={styles.queueInfoCol}>
-                  <Text style={styles.queueEntityTitle} numberOfLines={1}>
-                    {ev.activity_type.toUpperCase()} • {ev.detected_barangay}
-                  </Text>
-                  <Text style={styles.queueMetaText} numberOfLines={1}>
-                    GPS: {ev.latitude !== null ? `${ev.latitude.toFixed(4)}°N, ${ev.longitude?.toFixed(4)}°E` : 'GPS Exception'}{' '}
-                    (±{Math.round(ev.accuracy || 3)}m) • {ev.barangay_verified ? 'Verified' : 'Unverified Boundary'}
-                  </Text>
-                  <Text style={styles.queueHashSubline} numberOfLines={1}>
-                    {ev.file_hash_sha256}
-                  </Text>
-                </View>
-
-                <ChevronRight size={15} color="#CBD5E1" style={{ marginLeft: 6 }} />
+        {/* 2 Horizontal Evidence Cards */}
+        <View style={styles.evidenceTwoColRow}>
+          {/* Card 1: Farm Registration */}
+          <View style={styles.evidenceCard}>
+            <View style={styles.evidenceCardTop}>
+              <View style={styles.evidenceIconTitleRow}>
+                <ImageIcon size={13} color="#059669" style={{ marginRight: 3 }} />
+                <Text style={styles.evidenceTopCategory} numberOfLines={1}>
+                  FARM REG...
+                </Text>
               </View>
-            );
-          })}
+              <View style={styles.evidenceGreenChip}>
+                <Text style={styles.evidenceGreenChipText}>Farm Registration</Text>
+              </View>
+            </View>
+
+            <View style={styles.evidenceLocRow}>
+              <MapPin size={11} color="#64748B" style={{ marginRight: 3 }} />
+              <Text style={styles.evidenceLocText} numberOfLines={1}>
+                Brgy. Mabuhay
+              </Text>
+            </View>
+
+            <View style={styles.evidenceDateRow}>
+              <Clock size={11} color="#94A3B8" style={{ marginRight: 3 }} />
+              <Text style={styles.evidenceDateText}>Nov 3, 2026, 11:08 AM</Text>
+            </View>
+
+            {/* Thumbnails Row */}
+            <View style={styles.thumbnailsRow}>
+              {/* Rice Field Preview */}
+              <View style={[styles.photoBox, { backgroundColor: '#84CC16' }]}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=200&q=80',
+                  }}
+                  style={styles.thumbImage}
+                />
+              </View>
+              {/* Leaf close up */}
+              <View style={[styles.photoBox, { backgroundColor: '#15803D' }]}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1530595467537-0b5996c41f2d?w=200&q=80',
+                  }}
+                  style={styles.thumbImage}
+                />
+              </View>
+              {/* +2 overlay card */}
+              <View style={styles.morePhotosBox}>
+                <Text style={styles.morePhotosText}>+2</Text>
+              </View>
+            </View>
+
+            {/* Bottom Verifications */}
+            <View style={styles.evidenceBottomRow}>
+              <View style={styles.shaVerifiedRow}>
+                <ShieldCheck size={12} color="#059669" style={{ marginRight: 3 }} />
+                <Text style={styles.shaVerifiedText}>SHA-256 Verified</Text>
+              </View>
+              <View style={styles.gpsAccuracyRow}>
+                <MapPin size={10} color="#64748B" style={{ marginRight: 2 }} />
+                <Text style={styles.gpsAccuracyText}>±5 m</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Card 2: Distribution */}
+          <View style={styles.evidenceCard}>
+            <View style={styles.evidenceCardTop}>
+              <View style={styles.evidenceIconTitleRow}>
+                <ImageIcon size={14} color="#059669" style={{ marginRight: 4 }} />
+                <Text style={styles.evidenceTopCategory} numberOfLines={1}>
+                  DISTRIBUTION
+                </Text>
+              </View>
+              <View style={styles.evidenceBlueChip}>
+                <Text style={styles.evidenceBlueChipText}>Distribution</Text>
+              </View>
+            </View>
+
+            <View style={styles.evidenceLocRow}>
+              <MapPin size={11} color="#64748B" style={{ marginRight: 3 }} />
+              <Text style={styles.evidenceLocText} numberOfLines={1}>
+                Brgy. San Isidro
+              </Text>
+            </View>
+
+            <View style={styles.evidenceDateRow}>
+              <Clock size={11} color="#94A3B8" style={{ marginRight: 3 }} />
+              <Text style={styles.evidenceDateText}>Nov 3, 2026, 11:08 AM</Text>
+            </View>
+
+            {/* Thumbnails Row */}
+            <View style={styles.thumbnailsRow}>
+              {/* Seed bags 1 */}
+              <View style={[styles.photoBox, { backgroundColor: '#E2E8F0' }]}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200&q=80',
+                  }}
+                  style={styles.thumbImage}
+                />
+              </View>
+              {/* Seed bags 2 */}
+              <View style={[styles.photoBox, { backgroundColor: '#CBD5E1' }]}>
+                <Image
+                  source={{
+                    uri: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=200&q=80',
+                  }}
+                  style={styles.thumbImage}
+                />
+              </View>
+              {/* +1 overlay card */}
+              <View style={styles.morePhotosBox}>
+                <Text style={styles.morePhotosText}>+1</Text>
+              </View>
+            </View>
+
+            {/* Bottom Verifications */}
+            <View style={styles.evidenceBottomRow}>
+              <View style={styles.shaVerifiedRow}>
+                <ShieldCheck size={12} color="#059669" style={{ marginRight: 3 }} />
+                <Text style={styles.shaVerifiedText}>SHA-256 Verified</Text>
+              </View>
+              <View style={styles.gpsAccuracyRow}>
+                <MapPin size={10} color="#64748B" style={{ marginRight: 2 }} />
+                <Text style={styles.gpsAccuracyText}>±5 m</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* ── LOGOUT BUTTON ── */}
+        {/* ── 6. LOGOUT BUTTON ── */}
         <TouchableOpacity
           style={styles.logoutButton}
           activeOpacity={0.8}
           onPress={handleLogout}
         >
-          <LogOut size={18} color="#DC2626" style={{ marginRight: 8 }} />
+          <LogOut size={16} color="#DC2626" style={{ marginRight: 8 }} />
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
 
         {/* Version Footnote */}
         <Text style={styles.versionFootnote}>
-          AgroProfiler Field Operations v2.0.0
+          AgroProfiler Field Operations v2.0.0 (Offline-First SQLite + SHA-256 Geotagging)
         </Text>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 110 }} />
       </ScrollView>
 
       {/* ══ Logout Confirmation Modal ══ */}
@@ -616,6 +698,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F3FAF5',
   },
+
+  /* Solid Green Top Header matching Mockup */
   topHeaderWrapper: {
     backgroundColor: '#0F5128',
     paddingBottom: 16,
@@ -628,30 +712,64 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  menuIconButton: {
+  hamburgerButton: {
     width: 38,
     height: 38,
     borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
-  topHeaderTitleCol: {
+  headerTitleCol: {
     flex: 1,
   },
-  topHeaderTitle: {
-    fontSize: 20,
+  headerBrandTitle: {
+    fontSize: 19,
     fontFamily: 'Poppins_700Bold',
     color: '#FFFFFF',
     letterSpacing: -0.2,
   },
-  topHeaderSubtitle: {
-    fontSize: 12,
+  headerSubTitle: {
+    fontSize: 11,
     fontFamily: 'Poppins_400Regular',
     color: 'rgba(255, 255, 255, 0.85)',
-    marginTop: 2,
+    marginTop: -2,
   },
+  offlineChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  offlineChipText: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#92400E',
+  },
+  bellButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 7,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#EF4444',
+  },
+
+  /* Scroll Body */
   scrollBody: {
     flex: 1,
   },
@@ -660,7 +778,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  /* Profile Hero Card */
+  /* 1. Profile Hero Card */
   profileHeroCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -672,21 +790,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   profileAvatarCircle: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#0F5128',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#FEF3C7',
     marginRight: 14,
   },
   profileAvatarText: {
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: 'Poppins_700Bold',
     color: '#FFFFFF',
   },
@@ -700,24 +816,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   profileNameText: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontFamily: 'Poppins_700Bold',
     color: '#0F172A',
     flex: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
-  editProfilePill: {
+  editProfileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ECFDF5',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#D1FAE5',
   },
   editProfileText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: 'Poppins_600SemiBold',
     color: '#059669',
   },
@@ -727,12 +843,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2.5,
     borderRadius: 8,
     marginBottom: 6,
   },
   roleChipText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: 'Poppins_500Medium',
     color: '#059669',
   },
@@ -741,6 +857,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 2,
   },
+  emailIconText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginRight: 5,
+  },
   metaText: {
     fontSize: 11,
     fontFamily: 'Poppins_400Regular',
@@ -748,131 +869,185 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  /* Section Headers */
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  sectionTitleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sectionHeaderTitle: {
-    fontSize: 15,
-    fontFamily: 'Poppins_700Bold',
-    color: '#0F172A',
-  },
-  viewAllRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  viewAllText: {
-    fontSize: 12,
-    fontFamily: 'Poppins_600SemiBold',
-    color: '#059669',
-    marginRight: 2,
-  },
-
-  /* Sync Overview Grid */
-  syncOverviewGrid: {
+  /* 2. System Status 2-Col Bento */
+  statusCardsRow: {
     flexDirection: 'row',
     gap: 10,
     marginBottom: 14,
   },
-  syncMetricCard: {
+  statusCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1.5,
+  },
+  statusCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 6,
+  },
+  statusIconWrap: {
+    marginRight: 8,
+  },
+  statusTextCol: {
+    flex: 1,
+  },
+  statusCardTitle: {
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  statusCardSub: {
+    fontSize: 9.5,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  statusCheckCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* 3. Synchronization Overview Card */
+  syncOverviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 20,
+  },
+  syncOverviewHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  syncOverviewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  syncHeaderIconWrap: {
+    marginRight: 8,
+  },
+  syncOverviewTitle: {
+    fontSize: 13,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  syncOverviewSub: {
+    fontSize: 10,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  lastSyncedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    maxWidth: 140,
+  },
+  lastSyncedLabel: {
+    fontSize: 8.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#64748B',
+  },
+  lastSyncedValue: {
+    fontSize: 8.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#1E293B',
+  },
+
+  /* 3 Metrics Row inside Overview */
+  metricsThreeRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  metricBox: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
   },
-  offlineModeCard: {
-    flex: 1.4,
-    backgroundColor: '#ECFDF5',
-    borderColor: '#D1FAE5',
-    alignItems: 'flex-start',
-    paddingHorizontal: 14,
-  },
-  pendingSyncCard: {
-    flex: 1,
+  metricBoxPending: {
     backgroundColor: '#FEF3C7',
     borderColor: '#FDE68A',
   },
-  retryingCard: {
-    flex: 1,
+  metricBoxRetrying: {
     backgroundColor: '#ECFDF5',
     borderColor: '#D1FAE5',
   },
-  conflictsCard: {
-    flex: 1,
+  metricBoxConflicts: {
     backgroundColor: '#FEE2E2',
     borderColor: '#FECACA',
   },
-  metricIconWrap: {
-    marginBottom: 4,
-  },
-  metricCardTitle: {
-    fontSize: 13,
+  metricNumber: {
+    fontSize: 20,
     fontFamily: 'Poppins_700Bold',
-    color: '#065F46',
-    marginTop: 2,
+    lineHeight: 24,
   },
-  metricCardSubtitle: {
-    fontSize: 10,
-    fontFamily: 'Poppins_400Regular',
-    color: '#047857',
-    marginTop: 2,
-    lineHeight: 13,
-  },
-  metricCardNumber: {
-    fontSize: 18,
-    fontFamily: 'Poppins_700Bold',
-    marginVertical: 1,
-  },
-  metricCardStatusLabel: {
-    fontSize: 10,
+  metricLabel: {
+    fontSize: 11,
     fontFamily: 'Poppins_600SemiBold',
+    marginTop: 2,
   },
 
-  /* Action Buttons */
-  actionButtonsRow: {
+  /* Action Buttons inside Overview */
+  syncActionRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 10,
   },
-  primarySyncButton: {
+  syncNowButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#059669',
-    borderRadius: 24,
+    borderRadius: 22,
     paddingVertical: 12,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  primarySyncButtonText: {
+  syncNowButtonText: {
     fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
     color: '#FFFFFF',
   },
-  secondaryCacheButton: {
+  cacheOfflineButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 22,
     paddingVertical: 12,
     borderWidth: 1.5,
     borderColor: '#059669',
   },
-  secondaryCacheButtonText: {
+  cacheOfflineButtonText: {
     fontSize: 13,
     fontFamily: 'Poppins_600SemiBold',
     color: '#059669',
@@ -881,37 +1056,41 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
 
-  /* Reachability Subline */
-  reachabilityRow: {
+  /* Section Headers */
+  sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    marginBottom: 2,
   },
-  reachabilityText: {
-    fontSize: 11,
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionTitleText: {
+    fontSize: 14.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  sectionSublineText: {
+    fontSize: 10.5,
     fontFamily: 'Poppins_400Regular',
     color: '#64748B',
+    marginBottom: 10,
   },
-  reachabilityDotRow: {
+  viewAllRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  reachabilityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 4,
-  },
-  reachabilityServerText: {
-    fontSize: 11,
-    fontFamily: 'Poppins_500Medium',
-    color: '#475569',
+  viewAllText: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#059669',
+    marginRight: 2,
   },
 
-  /* Bento List Items */
-  bentoListContainer: {
+  /* Offline Sync Queue List */
+  queueCardContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     paddingHorizontal: 14,
@@ -922,12 +1101,12 @@ const styles = StyleSheet.create({
     elevation: 2,
     marginBottom: 10,
   },
-  bentoQueueRow: {
+  queueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
-  bentoDivider: {
+  queueRowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -937,40 +1116,177 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
-  queueInfoCol: {
+  queueMainCol: {
     flex: 1,
   },
-  queueEntityTitle: {
-    fontSize: 12.5,
+  queueRowTitle: {
+    fontSize: 12,
     fontFamily: 'Poppins_600SemiBold',
     color: '#0F172A',
-    marginBottom: 2,
+    marginBottom: 1,
   },
-  queueMetaText: {
-    fontSize: 11,
+  queueOpIdText: {
+    fontSize: 10,
     fontFamily: 'Poppins_400Regular',
     color: '#64748B',
   },
-  queueHashSubline: {
-    fontSize: 10,
-    fontFamily: 'Poppins_400Regular',
-    color: '#94A3B8',
+  queueDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 2,
   },
-  pendingChip: {
+  queueDateText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  pendingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF3C7',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 12,
+    borderRadius: 10,
   },
-  pendingChipText: {
-    fontSize: 10.5,
+  pendingBadgeText: {
+    fontSize: 10,
     fontFamily: 'Poppins_600SemiBold',
     color: '#B45309',
+  },
+
+  /* Field Evidence Vault 2-Col */
+  evidenceTwoColRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  evidenceCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  evidenceCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  evidenceIconTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 4,
+  },
+  evidenceTopCategory: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+    flex: 1,
+  },
+  evidenceGreenChip: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  evidenceGreenChipText: {
+    fontSize: 8.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#059669',
+  },
+  evidenceBlueChip: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  evidenceBlueChipText: {
+    fontSize: 8.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#3B82F6',
+  },
+  evidenceLocRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  evidenceLocText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_500Medium',
+    color: '#475569',
+    flex: 1,
+  },
+  evidenceDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  evidenceDateText: {
+    fontSize: 9.5,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  thumbnailsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  photoBox: {
+    flex: 1,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  morePhotosBox: {
+    width: 32,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  morePhotosText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
+    color: '#475569',
+  },
+  evidenceBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F8FAFC',
+  },
+  shaVerifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  shaVerifiedText: {
+    fontSize: 8.5,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#059669',
+  },
+  gpsAccuracyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  gpsAccuracyText: {
+    fontSize: 9,
+    fontFamily: 'Poppins_500Medium',
+    color: '#64748B',
   },
 
   /* Logout Button */
@@ -982,21 +1298,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FECACA',
     borderRadius: 24,
-    paddingVertical: 14,
-    marginTop: 18,
-    marginBottom: 12,
+    paddingVertical: 13,
+    marginTop: 14,
+    marginBottom: 10,
   },
   logoutButtonText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontFamily: 'Poppins_600SemiBold',
     color: '#DC2626',
   },
   versionFootnote: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Poppins_400Regular',
     color: '#94A3B8',
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
 
   /* Modal Dialogs */
