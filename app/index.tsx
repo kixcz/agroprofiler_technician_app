@@ -40,8 +40,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { login, isLoading, isAuthenticated } = useAuth();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('technician@agroprofiler.com');
+  const [password, setPassword] = useState('password');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);

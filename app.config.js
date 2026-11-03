@@ -50,6 +50,7 @@ export default {
     scheme: 'agromobile',
     plugins: [
       'expo-router',
+      'expo-font',
       'expo-secure-store',
       'expo-sqlite',
       [

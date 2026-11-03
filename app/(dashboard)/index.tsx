@@ -11,22 +11,32 @@ import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
   Bell,
-  CheckCircle,
-  Clock,
-  CloudDownload,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Layers,
+  Leaf,
   MapPin,
   Menu,
   Package,
   QrCode,
   RefreshCw,
+  Scan,
   Search,
+  Sprout,
+  UserPlus,
   Users,
-  Wifi,
   WifiOff,
 } from 'lucide-react-native';
 import * as React from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Dimensions,
+  Image,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -36,49 +46,45 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 export default function HomeDashboard() {
   const router = useRouter();
   const { openSidebar } = useSidebar();
   const { user } = useAuth();
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
   const {
-    indicator,
     isConnected,
     isSyncing,
     pendingCount,
-    conflictCount,
-    lastSyncedAt,
     syncNow,
-    downloadOfflinePackage,
   } = useSyncEngine();
 
   const [searchQuery, setSearchQuery] = React.useState('');
   const [summary, setSummary] = React.useState({
-    totalFarmers: 6,
+    totalFarmers: 7,
     totalFarms: 3,
     monitoringCount: 1,
     damageEntriesCount: 1,
-    pendingDistributionsCount: 5,
+    pendingDistributionsCount: 3,
     completedDistributionsCount: 1,
-    pendingSyncCount: 0,
+    pendingSyncCount: 3,
     failedSyncCount: 0,
     conflictSyncCount: 0,
     evidenceCapturedCount: 0,
   });
   const [recentFarmers, setRecentFarmers] = React.useState<LocalFarmer[]>([]);
-  const [isDownloadingPkg, setIsDownloadingPkg] = React.useState(false);
 
   const loadDashboardData = React.useCallback(async () => {
-    const [m, farmers] = await Promise.all([
-      getDashboardSummaryMetrics(),
-      getAllFarmers(),
-    ]);
-    setSummary(m);
-    setRecentFarmers(farmers.slice(0, 4));
+    try {
+      const [m, farmers] = await Promise.all([
+        getDashboardSummaryMetrics(),
+        getAllFarmers(),
+      ]);
+      setSummary(m);
+      setRecentFarmers(farmers.slice(0, 5));
+    } catch (err) {
+      console.warn('Error loading dashboard data:', err);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -86,763 +92,739 @@ export default function HomeDashboard() {
     return subscribeDatabaseChanges(loadDashboardData);
   }, [loadDashboardData]);
 
-  const bg = isDark ? '#071A0E' : '#F0FDF4';
-  const card = isDark ? '#0F2418' : '#FFFFFF';
-  const border = isDark ? '#1F3A28' : '#E7F5ED';
-  const textPrimary = isDark ? '#F8FAFC' : '#0F172A';
-  const textMuted = isDark ? '#94A3B8' : '#64748B';
-  const inputBg = isDark ? '#0F2418' : '#FFFFFF';
-  const searchBorder = isDark ? '#1F3A28' : '#BBF7D0';
+  // Format dynamic dates
+  const todayDateFormatted = React.useMemo(() => {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }, []);
 
-  const metrics = [
-    {
-      icon: <Users size={20} color="#FFFFFF" />,
-      label: 'Assigned Farmers',
-      value: String(summary.totalFarmers),
-      bg: '#16A34A',
-      light: '#DCFCE7',
-    },
-    {
-      icon: <MapPin size={20} color="#FFFFFF" />,
-      label: 'Inspections & Farms',
-      value: String(summary.totalFarms + summary.monitoringCount),
-      bg: '#0891B2',
-      light: '#CFFAFE',
-    },
-    {
-      icon: <AlertTriangle size={20} color="#FFFFFF" />,
-      label: 'Damage Assessments',
-      value: String(summary.damageEntriesCount),
-      bg: '#F59E0B',
-      light: '#FFFBEB',
-    },
-    {
-      icon: <Package size={20} color="#FFFFFF" />,
-      label: 'Pending Releases',
-      value: String(summary.pendingDistributionsCount),
-      bg: '#8B5CF6',
-      light: '#F5F3FF',
-    },
-  ];
-
-  const quickActions = [
-    {
-      label: 'Register\nFarmer',
-      icon: <Users size={26} color="#16A34A" />,
-      bg: '#DCFCE7',
-      border: '#BBF7D0',
-      route: '/(dashboard)/register-farmer',
-    },
-    {
-      label: 'Crop\nDamage',
-      icon: <AlertTriangle size={26} color="#F59E0B" />,
-      bg: '#FFFBEB',
-      border: '#FDE68A',
-      route: '/(dashboard)/record-damage',
-    },
-    {
-      label: 'Distribute\nAllocation',
-      icon: <Package size={26} color="#8B5CF6" />,
-      bg: '#F5F3FF',
-      border: '#DDD6FE',
-      route: '/(dashboard)/distribute',
-    },
-    {
-      label: 'Scan\nQR Code',
-      icon: <QrCode size={26} color="#0891B2" />,
-      bg: '#CFFAFE',
-      border: '#A5F3FC',
-      route: '/(dashboard)/scan',
-    },
-  ];
-
-  const alerts = [
-    ...(pendingCount > 0
-      ? [
-          {
-            id: 'sync-pending',
-            type: 'warning',
-            message: `${pendingCount} offline field transaction(s) queued in SQLite (${summary.evidenceCapturedCount} geotagged photo evidence).`,
-          },
-        ]
-      : []),
-    ...(conflictCount > 0
-      ? [
-          {
-            id: 'sync-conflict',
-            type: 'warning',
-            message: `${conflictCount} synchronization conflict(s) require technician review in Profile & Sync.`,
-          },
-        ]
-      : []),
-    {
-      id: 'dmg-alert',
-      type: 'warning',
-      message: 'Active Flood Assessment in Barangay San Isidro',
-    },
-    {
-      id: 'dist-info',
-      type: 'info',
-      message: 'RCEF Certified Rice Seeds & Urea Fertilizer batches open for QR distribution',
-    },
-  ];
-
-  const todayTasks = [
-    {
-      id: 1,
-      title: 'Inspect Juan Dela Cruz Riceland (Brgy. Poblacion)',
-      status: 'pending',
-      time: '9:00 AM',
-      route: '/(dashboard)/crop-monitoring',
-    },
-    {
-      id: 2,
-      title: `${summary.pendingDistributionsCount} beneficiaries awaiting QR seed/fertilizer release`,
-      status: 'warning',
-      time: 'Scheduled Today',
-      route: '/(dashboard)/distribute',
-    },
-    {
-      id: 3,
-      title: 'Verify Typhoon Aghon crop damage entries (Brgy. San Isidro)',
-      status: 'warning',
-      time: 'Field Audit',
-      route: '/(dashboard)/record-damage',
-    },
-  ];
-
-  const AVATAR_PALETTE = [
-    '#16A34A',
-    '#2563EB',
-    '#9333EA',
-    '#F59E0B',
-    '#EF4444',
-    '#0891B2',
-    '#DB2777',
-    '#EA580C',
-  ];
-  const avatarColor = (idx: number) => AVATAR_PALETTE[idx % AVATAR_PALETTE.length];
-
-  const getFirstName = (n?: string | null) => (n ? n.split(' ')[0] : 'Technician');
-
-  const handleDownloadOfflineData = async () => {
-    setIsDownloadingPkg(true);
-    try {
-      const res = await downloadOfflinePackage();
-      Alert.alert('Offline Field Package Cached', res.message);
-    } finally {
-      setIsDownloadingPkg(false);
-    }
-  };
-
-  const handleManualSync = async () => {
-    const res = await syncNow();
-    Alert.alert('Synchronization Status', res.message);
-  };
-
-  const getIndicatorPill = () => {
-    if (!isConnected) {
-      return {
-        label: 'Offline',
-        color: '#EF4444',
-        bg: 'rgba(239,68,68,0.2)',
-        icon: <WifiOff size={12} color="#EF4444" />,
-      };
-    }
-    if (indicator === 'syncing') {
-      return {
-        label: 'Syncing...',
-        color: '#93C5FD',
-        bg: 'rgba(59,130,246,0.25)',
-        icon: <RefreshCw size={12} color="#93C5FD" />,
-      };
-    }
-    if (indicator === 'sync_failed') {
-      return {
-        label: 'Sync Failed',
-        color: '#FDE047',
-        bg: 'rgba(234,179,8,0.25)',
-        icon: <AlertTriangle size={12} color="#FDE047" />,
-      };
-    }
-    if (pendingCount > 0) {
-      return {
-        label: `Pending Sync (${pendingCount})`,
-        color: '#FDE047',
-        bg: 'rgba(234,179,8,0.25)',
-        icon: <Clock size={12} color="#FDE047" />,
-      };
-    }
-    if (indicator === 'synced') {
-      return {
-        label: 'Synced',
-        color: '#A7F3D0',
-        bg: 'rgba(16,185,129,0.22)',
-        icon: <CheckCircle size={12} color="#A7F3D0" />,
-      };
-    }
-    return {
-      label: 'Online',
-      color: '#A7F3D0',
-      bg: 'rgba(16,185,129,0.22)',
-      icon: <Wifi size={12} color="#A7F3D0" />,
-    };
-  };
-
-  const pill = getIndicatorPill();
-
-  const filteredFarmers = searchQuery.trim()
-    ? recentFarmers.filter((f) => {
-        const q = searchQuery.toLowerCase();
-        return (
-          f.first_name.toLowerCase().includes(q) ||
-          f.last_name.toLowerCase().includes(q) ||
-          f.lfid.toLowerCase().includes(q) ||
-          f.rsbsa_number.toLowerCase().includes(q) ||
-          f.barangay.toLowerCase().includes(q)
-        );
-      })
-    : recentFarmers;
+  const technicianName = user?.name || 'Engr. Marco Reyes';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: bg }} edges={['top', 'left', 'right']}>
-      <StatusBar
-        barStyle={isDark ? 'light-content' : 'dark-content'}
-        backgroundColor="transparent"
-        translucent
-      />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── Custom Header ── */}
-      <View style={[styles.header, { backgroundColor: '#16A34A' }]}>
-        <TouchableOpacity
-          onPress={openSidebar}
-          style={styles.menuBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Menu size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <View style={{ flex: 1, marginLeft: 14 }}>
-          <Text style={styles.headerGreeting}>Field Operations Ready,</Text>
-          <Text style={styles.headerName} numberOfLines={1}>
-            {getFirstName(user?.name)}
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={handleManualSync}
-            style={[styles.onlinePill, { backgroundColor: pill.bg }]}
-          >
-            {pill.icon}
-            <Text style={[styles.onlinePillText, { color: pill.color }]}>{pill.label}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push('/(dashboard)/profile' as any)}
-            style={styles.bellBtn}
-          >
-            <Bell size={20} color="#FFFFFF" />
-            {pendingCount > 0 && <View style={styles.bellDot} />}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 24 }}
-      >
-        {/* ── Search bar ── */}
-        <View style={[styles.searchWrapper, { backgroundColor: '#16A34A' }]}>
-          <View style={[styles.searchBar, { backgroundColor: inputBg, borderColor: searchBorder }]}>
-            <Search size={18} color={textMuted} style={{ marginRight: 8 }} />
-            <TextInput
-              style={[styles.searchInput, { color: textPrimary }]}
-              placeholder="Search farmer by LFID, RSBSA, or QR code..."
-              placeholderTextColor={textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            <TouchableOpacity onPress={() => router.push('/(dashboard)/scan' as any)}>
-              <QrCode size={22} color="#16A34A" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── Sync & Pre-Visit Offline Package Bar ── */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 8,
-            marginTop: -10,
-            marginBottom: 4,
-            paddingHorizontal: 16,
-          }}
-        >
-          <TouchableOpacity
-            onPress={handleManualSync}
-            disabled={isSyncing}
-            style={[
-              styles.syncBadge,
-              {
-                backgroundColor: isDark ? '#0F2418' : '#DCFCE7',
-                borderColor: isDark ? '#1F3A28' : '#BBF7D0',
-                marginTop: 0,
-                marginBottom: 0,
-              },
-            ]}
-          >
-            <Clock size={13} color="#16A34A" />
-            <Text style={styles.syncText}>
-              {lastSyncedAt
-                ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}`
-                : 'SQLite Offline DB Active'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleDownloadOfflineData}
-            disabled={isDownloadingPkg}
-            style={[
-              styles.syncBadge,
-              {
-                backgroundColor: isDark ? '#0F2418' : '#EFF6FF',
-                borderColor: isDark ? '#1E3A8A' : '#BFDBFE',
-                marginTop: 0,
-                marginBottom: 0,
-              },
-            ]}
-          >
-            <CloudDownload size={13} color="#2563EB" />
-            <Text style={[styles.syncText, { color: '#2563EB' }]}>
-              {isDownloadingPkg ? 'Caching...' : 'Cache Barangay Data'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Metrics ── */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Overview</Text>
-          <View style={styles.metricsGrid}>
-            {metrics.map((m) => (
-              <View
-                key={m.label}
-                style={[
-                  styles.metricCard,
-                  { backgroundColor: card, borderColor: border, shadowColor: '#000' },
-                ]}
-              >
-                <View style={[styles.metricIconBg, { backgroundColor: m.bg }]}>{m.icon}</View>
-                <Text style={[styles.metricValue, { color: textPrimary }]}>{m.value}</Text>
-                <Text style={[styles.metricLabel, { color: textMuted }]}>{m.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* ── Quick Actions ── */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Quick Actions</Text>
-          <View style={styles.actionsGrid}>
-            {quickActions.map((a) => (
+      {/* ── TOP GREEN HEADER WITH BRAND & OFFLINE PILL ── */}
+      <View style={styles.headerContainer}>
+        <SafeAreaView edges={['top']} style={styles.headerSafeArea}>
+          <View style={styles.headerTopBar}>
+            {/* Left: Brand Icon + Title + Role */}
+            <View style={styles.headerBrandCol}>
               <TouchableOpacity
-                key={a.label}
-                style={[styles.actionCard, { backgroundColor: a.bg, borderColor: a.border }]}
-                onPress={() => router.push(a.route as any)}
+                style={styles.brandTouchable}
                 activeOpacity={0.75}
+                onPress={openSidebar}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <View style={styles.actionIcon}>{a.icon}</View>
-                <Text style={[styles.actionLabel, { color: textPrimary }]}>{a.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* ── Alerts ── */}
-        {alerts.length > 0 && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: textPrimary }]}>Field Status & Alerts</Text>
-            <View style={{ gap: 8 }}>
-              {alerts.map((a) => (
-                <View
-                  key={a.id}
-                  style={[
-                    styles.alertCard,
-                    a.type === 'warning'
-                      ? { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }
-                      : { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
-                  ]}
-                >
-                  {a.type === 'warning' ? (
-                    <AlertTriangle size={16} color="#F59E0B" />
-                  ) : (
-                    <CheckCircle size={16} color="#2563EB" />
-                  )}
-                  <Text
-                    style={[
-                      styles.alertText,
-                      { color: a.type === 'warning' ? '#92400E' : '#1E40AF' },
-                    ]}
-                  >
-                    {a.message}
-                  </Text>
+                <View style={styles.leafIconCircle}>
+                  <Leaf size={20} color="#FFFFFF" strokeWidth={2.4} />
                 </View>
-              ))}
+                <View>
+                  <Text style={styles.headerBrandTitle}>AgroProfiler</Text>
+                  <Text style={styles.headerRoleTitle}>Field Technician</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Right: Offline Mode Pill + Notification Bell */}
+            <View style={styles.headerRightGroup}>
+              <View style={styles.offlineModePill}>
+                <WifiOff size={13} color="#92400E" style={{ marginRight: 5 }} />
+                <Text style={styles.offlineModePillText}>Offline Mode</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.bellButton}
+                activeOpacity={0.75}
+                onPress={() => router.push('/activities' as any)}
+              >
+                <Bell size={20} color="#FFFFFF" strokeWidth={2.2} />
+                <View style={styles.bellBadge} />
+              </TouchableOpacity>
             </View>
           </View>
-        )}
+        </SafeAreaView>
+      </View>
 
-        {/* ── Today's Tasks ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={[styles.sectionTitle, { color: textPrimary }]}>Today's Field Assignments</Text>
-            <TouchableOpacity onPress={() => router.push('/(dashboard)/activities' as any)}>
-              <Text style={styles.viewAll}>View Log</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ gap: 8 }}>
-            {todayTasks.map((t) => (
-              <TouchableOpacity
-                key={t.id}
-                onPress={() => router.push(t.route as any)}
-                style={[
-                  styles.taskCard,
-                  { backgroundColor: card, borderColor: border, shadowColor: '#000' },
-                ]}
-                activeOpacity={0.8}
-              >
-                <View
-                  style={[
-                    styles.taskDot,
-                    { backgroundColor: t.status === 'warning' ? '#F59E0B' : '#2563EB' },
-                  ]}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.taskTitle, { color: textPrimary }]}>{t.title}</Text>
-                  <Text style={[styles.taskTime, { color: textMuted }]}>{t.time}</Text>
-                </View>
-                <View style={styles.taskChevron}>
-                  <Text style={{ color: textMuted, fontSize: 18 }}>›</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* ── Assigned Offline Farmers ── */}
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={[styles.sectionTitle, { color: textPrimary }]}>
-              Assigned Farmers (Offline Ready)
+      {/* ── MAIN SCROLLABLE BENTO BODY ── */}
+      <ScrollView
+        style={styles.scrollBody}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Greeting + Today Date Row */}
+        <View style={styles.greetingRow}>
+          <View style={styles.greetingTextCol}>
+            <Text style={styles.greetingSubline}>Good morning,</Text>
+            <Text style={styles.greetingName} numberOfLines={1}>
+              {technicianName}!
             </Text>
-            <TouchableOpacity onPress={() => router.push('/(dashboard)/farmers' as any)}>
-              <Text style={styles.viewAll}>View All</Text>
-            </TouchableOpacity>
           </View>
-          <View style={{ gap: 8 }}>
-            {filteredFarmers.map((f, idx) => {
-              const initials = `${f.first_name[0] || ''}${f.last_name[0] || ''}`.toUpperCase();
-              return (
-                <TouchableOpacity
-                  key={f.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/(dashboard)/farmer-profile' as any,
-                      params: { id: f.id, lfid: f.lfid },
-                    })
-                  }
-                  style={[
-                    styles.farmerCard,
-                    { backgroundColor: card, borderColor: border, shadowColor: '#000' },
-                  ]}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.farmerAvatar, { backgroundColor: avatarColor(idx) }]}>
-                    <Text style={styles.farmerAvatarText}>{initials}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.farmerName, { color: textPrimary }]}>
-                      {f.first_name} {f.last_name}
-                    </Text>
-                    <Text style={[styles.farmerLocation, { color: textMuted }]}>
-                      {f.lfid} • Brgy. {f.barangay} ({f.primary_commodity})
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 99,
-                      backgroundColor:
-                        f.sync_status === 'synced' ? '#DCFCE7' : '#FEF3C7',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: '700',
-                        color: f.sync_status === 'synced' ? '#15803D' : '#D97706',
-                      }}
-                    >
-                      {f.sync_status === 'synced' ? 'Synced' : 'Pending Sync'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+
+          {/* Today Date Bento Pill Card */}
+          <View style={styles.todayDateCard}>
+            <Calendar size={18} color="#059669" strokeWidth={2.2} style={{ marginRight: 6 }} />
+            <View>
+              <Text style={styles.todayLabel}>Today</Text>
+              <Text style={styles.todayValue}>{todayDateFormatted}</Text>
+            </View>
           </View>
         </View>
+
+        {/* Global Search Bar with QR Scanner Shortcut */}
+        <View style={styles.searchBarContainer}>
+          <Search size={18} color="#94A3B8" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search farmer by LFID, RSBSA, or QR code..."
+            placeholderTextColor="#94A3B8"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              if (searchQuery.trim()) {
+                router.push({
+                  pathname: '/farmers' as any,
+                  params: { q: searchQuery.trim() },
+                });
+              }
+            }}
+          />
+          <TouchableOpacity
+            style={styles.searchQrButton}
+            onPress={() => router.push('/scan' as any)}
+            activeOpacity={0.7}
+          >
+            <Scan size={20} color="#059669" strokeWidth={2.4} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Offline Notice Banner Card with Sync Now */}
+        <View style={styles.offlineCard}>
+          <View style={styles.offlineCardLeft}>
+            <View style={styles.offlineIconWrapper}>
+              <WifiOff size={20} color="#D97706" strokeWidth={2.3} />
+            </View>
+            <View style={styles.offlineTextWrapper}>
+              <Text style={styles.offlineTitle}>You're working offline</Text>
+              <Text style={styles.offlineSubtitle}>
+                Using local data (SQLite). Changes will sync when internet is available.
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.syncButton, isSyncing && styles.syncButtonDisabled]}
+            activeOpacity={0.8}
+            onPress={syncNow}
+            disabled={isSyncing}
+          >
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#059669" style={{ marginRight: 4 }} />
+            ) : (
+              <RefreshCw size={15} color="#059669" strokeWidth={2.4} style={{ marginRight: 5 }} />
+            )}
+            <Text style={styles.syncButtonText}>Sync Now</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── SECTION 1: FIELD OVERVIEW (4 Bento Metric Cards) ── */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionTitleWithIcon}>
+            <Layers size={19} color="#059669" style={{ marginRight: 6 }} />
+            <Text style={styles.sectionTitle}>Field Overview</Text>
+          </View>
+          <View style={styles.filterPill}>
+            <Text style={styles.filterPillText}>This Field Cycle</Text>
+            <ChevronDown size={14} color="#059669" style={{ marginLeft: 3 }} />
+          </View>
+        </View>
+
+        <View style={styles.overviewGrid}>
+          {/* Card 1: Assigned Farmers */}
+          <TouchableOpacity
+            style={[styles.overviewCard, { backgroundColor: '#F0FDF4' }]}
+            activeOpacity={0.75}
+            onPress={() => router.push('/farmers' as any)}
+          >
+            <View style={[styles.overviewIconCircle, { backgroundColor: '#DCFCE7' }]}>
+              <Users size={18} color="#16A34A" strokeWidth={2.2} />
+            </View>
+            <View style={styles.overviewTextCol}>
+              <Text style={styles.overviewNumber}>{summary.totalFarmers || 7}</Text>
+              <Text style={styles.overviewLabel} numberOfLines={1}>Assigned Farmers</Text>
+            </View>
+            <ChevronRight size={15} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Card 2: Inspections & Farms */}
+          <TouchableOpacity
+            style={[styles.overviewCard, { backgroundColor: '#F0F9FF' }]}
+            activeOpacity={0.75}
+            onPress={() => router.push('/crop-monitoring' as any)}
+          >
+            <View style={[styles.overviewIconCircle, { backgroundColor: '#E0F2FE' }]}>
+              <MapPin size={18} color="#0284C7" strokeWidth={2.2} />
+            </View>
+            <View style={styles.overviewTextCol}>
+              <Text style={styles.overviewNumber}>{summary.totalFarms || 3}</Text>
+              <Text style={styles.overviewLabel} numberOfLines={1}>Inspections & Farms</Text>
+            </View>
+            <ChevronRight size={15} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Card 3: Damage Assessments */}
+          <TouchableOpacity
+            style={[styles.overviewCard, { backgroundColor: '#FFFBEB' }]}
+            activeOpacity={0.75}
+            onPress={() => router.push('/record-damage' as any)}
+          >
+            <View style={[styles.overviewIconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <AlertTriangle size={18} color="#D97706" strokeWidth={2.2} />
+            </View>
+            <View style={styles.overviewTextCol}>
+              <Text style={styles.overviewNumber}>{summary.damageEntriesCount || 1}</Text>
+              <Text style={styles.overviewLabel} numberOfLines={1}>Damage Assessments</Text>
+            </View>
+            <ChevronRight size={15} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Card 4: Pending Releases */}
+          <TouchableOpacity
+            style={[styles.overviewCard, { backgroundColor: '#FAF5FF' }]}
+            activeOpacity={0.75}
+            onPress={() => router.push('/distribute' as any)}
+          >
+            <View style={[styles.overviewIconCircle, { backgroundColor: '#F3E8FF' }]}>
+              <Package size={18} color="#7E22CE" strokeWidth={2.2} />
+            </View>
+            <View style={styles.overviewTextCol}>
+              <Text style={styles.overviewNumber}>{summary.pendingDistributionsCount || 3}</Text>
+              <Text style={styles.overviewLabel} numberOfLines={1}>Pending Releases</Text>
+            </View>
+            <ChevronRight size={15} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── SECTION 2: QUICK ACTIONS (6 Bento Tiles) ── */}
+        <View style={[styles.sectionHeaderRow, { marginTop: 18 }]}>
+          <View style={styles.sectionTitleWithIcon}>
+            <Leaf size={18} color="#059669" style={{ marginRight: 6 }} />
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+          </View>
+        </View>
+
+        <View style={styles.actionsGrid}>
+          {/* Action 1: Register Farmer */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={() => router.push('/register-farmer' as any)}
+          >
+            <UserPlus size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Register{'\n'}Farmer</Text>
+          </TouchableOpacity>
+
+          {/* Action 2: Record Crop Monitoring */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={() => router.push('/crop-monitoring' as any)}
+          >
+            <Sprout size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Record{'\n'}Crop Monitoring</Text>
+          </TouchableOpacity>
+
+          {/* Action 3: Report Crop Damage */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={() => router.push('/record-damage' as any)}
+          >
+            <AlertTriangle size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Report{'\n'}Crop Damage</Text>
+          </TouchableOpacity>
+
+          {/* Action 4: Distribute Inputs */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={() => router.push('/distribute' as any)}
+          >
+            <Package size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Distribute{'\n'}Inputs</Text>
+          </TouchableOpacity>
+
+          {/* Action 5: Scan QR Code */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={() => router.push('/scan' as any)}
+          >
+            <Scan size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Scan{'\n'}QR Code</Text>
+          </TouchableOpacity>
+
+          {/* Action 6: Sync Data */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            activeOpacity={0.75}
+            onPress={syncNow}
+          >
+            <RefreshCw size={22} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.actionCardText}>Sync Data{'\n'}(Online)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── SECTION 3: BOTTOM BENTO CARDS (Today's Tasks & Assigned Farmers) ── */}
+        <View style={styles.bottomBentoRow}>
+          {/* Card Left: Today's Field Tasks */}
+          <TouchableOpacity
+            style={styles.bottomBentoCard}
+            activeOpacity={0.78}
+            onPress={() => router.push('/activities' as any)}
+          >
+            <View style={styles.bottomBentoHeader}>
+              <View style={styles.bottomBentoIconRing}>
+                <Calendar size={18} color="#059669" strokeWidth={2.2} />
+              </View>
+              <ChevronRight size={15} color="#94A3B8" />
+            </View>
+
+            <Text style={styles.bottomBentoTitle}>Today's Field Tasks</Text>
+            <Text style={styles.bottomBentoSubtitle}>3 tasks scheduled</Text>
+
+            {/* Subtle decorative graphic placeholder */}
+            <View style={styles.bentoIllustrationWrap}>
+              <ClipboardList size={38} color="#A7F3D0" strokeWidth={1.5} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Card Right: Assigned Farmers */}
+          <TouchableOpacity
+            style={styles.bottomBentoCard}
+            activeOpacity={0.78}
+            onPress={() => router.push('/farmers' as any)}
+          >
+            <View style={styles.bottomBentoHeader}>
+              <View style={styles.bottomBentoIconRing}>
+                <Users size={18} color="#059669" strokeWidth={2.2} />
+              </View>
+              <ChevronRight size={15} color="#94A3B8" />
+            </View>
+
+            <Text style={styles.bottomBentoTitle}>Assigned Farmers</Text>
+            <Text style={styles.bottomBentoSubtitle}>
+              {summary.totalFarmers || 7} farmers (offline ready)
+            </Text>
+
+            {/* Subtle decorative graphic placeholder */}
+            <View style={styles.bentoIllustrationWrap}>
+              <Users size={40} color="#A7F3D0" strokeWidth={1.5} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  container: {
+    flex: 1,
+    backgroundColor: '#F3FAF5',
+  },
+  headerContainer: {
+    backgroundColor: '#0F5128',
+    paddingBottom: 16,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+  },
+  headerSafeArea: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 10 : 4,
+  },
+  headerTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerBrandCol: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
   },
-  menuBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  brandTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  leafIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
   },
-  headerGreeting: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  headerName: {
+  headerBrandTitle: {
+    fontSize: 19,
+    fontFamily: 'Poppins_700Bold',
     color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  headerRight: {
+  headerRoleTitle: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_400Regular',
+    color: 'rgba(255, 255, 255, 0.82)',
+  },
+  headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
-  onlinePill: {
+  offlineModePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    borderRadius: 20,
+    backgroundColor: '#FEF3C7',
     paddingHorizontal: 10,
     paddingVertical: 5,
+    borderRadius: 16,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
-  onlinePillText: {
+  offlineModePillText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#92400E',
   },
-  bellBtn: {
+  bellButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
-  bellDot: {
+  bellBadge: {
     position: 'absolute',
     top: 7,
-    right: 7,
+    right: 8,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#EF4444',
     borderWidth: 1.5,
-    borderColor: '#16A34A',
+    borderColor: '#FFFFFF',
   },
-  searchWrapper: {
+
+  /* Scrollable Body */
+  scrollBody: {
+    flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 20,
-    paddingTop: 4,
+    paddingTop: 16,
   },
-  searchBar: {
+
+  /* Greeting + Today Date Row */
+  greetingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  greetingTextCol: {
+    flex: 1,
+    marginRight: 12,
+  },
+  greetingSubline: {
+    fontSize: 14,
+    fontFamily: 'Poppins_500Medium',
+    color: '#475569',
+  },
+  greetingName: {
+    fontSize: 20,
+    fontFamily: 'Poppins_800ExtraBold',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  todayDateCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: 16,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  todayLabel: {
+    fontSize: 10,
+    fontFamily: 'Poppins_500Medium',
+    color: '#059669',
+  },
+  todayValue: {
+    fontSize: 11.5,
+    fontFamily: 'Poppins_700Bold',
+    color: '#047857',
+  },
+
+  /* Search Bar */
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
     paddingHorizontal: 14,
     height: 48,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 12.5,
+    fontFamily: 'Poppins_400Regular',
+    color: '#0F172A',
   },
-  syncBadge: {
+  searchQrButton: {
+    padding: 6,
+  },
+
+  /* Offline Banner Card */
+  offlineCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderRadius: 20,
+    borderColor: '#FDE68A',
+    marginBottom: 18,
+  },
+  offlineCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  offlineIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  offlineTextWrapper: {
+    flex: 1,
+  },
+  offlineTitle: {
+    fontSize: 13,
+    fontFamily: 'Poppins_700Bold',
+    color: '#92400E',
+  },
+  offlineSubtitle: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_400Regular',
+    color: '#B45309',
+    marginTop: 2,
+    lineHeight: 14,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#059669',
   },
-  syncText: {
-    fontSize: 11,
-    color: '#16A34A',
-    fontWeight: '600',
+  syncButtonDisabled: {
+    opacity: 0.6,
   },
-  section: {
-    paddingHorizontal: 16,
-    marginTop: 20,
+  syncButtonText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#059669',
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-  sectionRow: {
+
+  /* Section Headers */
+  sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  viewAll: {
-    color: '#16A34A',
-    fontSize: 13,
-    fontWeight: '600',
+  sectionTitleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  metricsGrid: {
+  sectionTitle: {
+    fontSize: 15,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
+  },
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  filterPillText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#059669',
+  },
+
+  /* 4-Box Field Overview Grid */
+  overviewGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    marginBottom: 6,
   },
-  metricCard: {
-    width: '47.5%',
-    borderRadius: 20,
+  overviewCard: {
+    width: (Dimensions.get('window').width - 42) / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 16,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  metricIconBg: {
-    width: 40,
-    height: 40,
+  overviewIconCircle: {
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginRight: 10,
   },
-  metricValue: {
-    fontSize: 26,
-    fontWeight: '800',
-    marginBottom: 2,
+  overviewTextCol: {
+    flex: 1,
   },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+  overviewNumber: {
+    fontSize: 17,
+    fontFamily: 'Poppins_800ExtraBold',
+    color: '#0F172A',
   },
+  overviewLabel: {
+    fontSize: 10.5,
+    fontFamily: 'Poppins_500Medium',
+    color: '#64748B',
+    marginTop: 1,
+  },
+
+  /* 6 Quick Action Grid */
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    marginBottom: 18,
   },
   actionCard: {
-    width: '47.5%',
-    borderRadius: 20,
-    borderWidth: 1.5,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: 'flex-start',
-  },
-  actionIcon: {
-    marginBottom: 12,
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  alertCard: {
-    flexDirection: 'row',
+    width: (Dimensions.get('window').width - 52) / 3,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
+    justifyContent: 'center',
     borderWidth: 1,
+    borderColor: '#DCFCE7',
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  alertText: {
+  actionCardText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_600SemiBold',
+    color: '#065F46',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 14,
+  },
+
+  /* Bottom Bento Cards */
+  bottomBentoRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bottomBentoCard: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  taskCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  taskDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  taskTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  taskTime: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  taskChevron: {
-    paddingLeft: 4,
-  },
-  farmerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     padding: 14,
-    borderRadius: 20,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 2,
+    position: 'relative',
+    overflow: 'hidden',
+    minHeight: 130,
   },
-  farmerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  bottomBentoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  bottomBentoIconRing: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  farmerAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  farmerName: {
-    fontSize: 14,
-    fontWeight: '700',
+  bottomBentoTitle: {
+    fontSize: 13,
+    fontFamily: 'Poppins_700Bold',
+    color: '#0F172A',
     marginBottom: 2,
   },
-  farmerLocation: {
-    fontSize: 12,
-    fontWeight: '400',
+  bottomBentoSubtitle: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: '#64748B',
+  },
+  bentoIllustrationWrap: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    opacity: 0.5,
   },
 });

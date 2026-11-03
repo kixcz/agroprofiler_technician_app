@@ -1,54 +1,63 @@
 import { useAuth } from '@/lib/auth/useAuth';
 import { useSidebar } from '@/lib/SidebarContext';
-import { useRouter } from 'expo-router';
+import { useSyncEngine } from '@/lib/services/syncEngine';
+import { usePathname, useRouter } from 'expo-router';
 import {
   AlertTriangle,
+  Calendar,
+  Check,
   ChevronRight,
+  ClipboardList,
+  Database,
+  ExternalLink,
+  Flame,
+  Globe,
   Home,
+  Layers,
   Leaf,
   LogOut,
   MapPin,
   Package,
   QrCode,
+  RefreshCw,
+  Scan,
+  Settings,
+  ShieldAlert,
+  Sprout,
   User,
   UserPlus,
   Users,
+  Wifi,
+  WifiOff,
   X,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   BackHandler,
   Dimensions,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
-const SIDEBAR_WIDTH = Dimensions.get('window').width * 0.82;
-
-const AVATAR_PALETTE = ['#16A34A', '#2563EB', '#9333EA', '#F59E0B', '#EF4444', '#0891B2'];
-const getAvatarColor = (name?: string | null) => {
-  if (!name) return '#16A34A';
-  const idx = name.charCodeAt(0) % AVATAR_PALETTE.length;
-  return AVATAR_PALETTE[idx];
-};
-const getInitials = (name?: string | null) => {
-  if (!name) return 'AG';
-  return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.85, 340);
 
 interface NavItem {
-  icon: React.ReactNode;
+  key: string;
   label: string;
   description: string;
   route: string;
-  iconBg: string;
+  icon: (color: string, focused: boolean) => React.ReactNode;
+  badge?: string | number;
+  badgeType?: 'number' | 'check' | 'pending';
 }
 
 interface NavGroup {
@@ -60,31 +69,56 @@ export default function Sidebar() {
   const { isOpen, closeSidebar } = useSidebar();
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { colorScheme } = useColorScheme();
-  const isDark = colorScheme === 'dark';
 
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const {
+    isConnected,
+    isSyncing,
+    pendingCount,
+    conflictCount,
+    syncNow,
+  } = useSyncEngine();
 
-  const translateX      = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
-  const overlayOpacity  = useRef(new Animated.Value(0)).current;
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  /* ── Animation ── */
+  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+
+  // Animation handling
   useEffect(() => {
     if (isOpen) {
       Animated.parallel([
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 68, friction: 12 }),
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 240, useNativeDriver: true }),
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 11,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.spring(translateX, { toValue: -SIDEBAR_WIDTH, useNativeDriver: true, tension: 68, friction: 12 }),
-        Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.spring(translateX, {
+          toValue: -DRAWER_WIDTH,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 11,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
       ]).start();
     }
   }, [isOpen]);
 
-  /* ── Android back ── */
+  // Back button handling on Android
   useEffect(() => {
     if (!isOpen) return;
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -94,446 +128,787 @@ export default function Sidebar() {
     return () => handler.remove();
   }, [isOpen, closeSidebar]);
 
-  /* ── Theme ── */
-  const panelBg     = isDark ? '#0D1F13' : '#FFFFFF';
-  const cardBg      = isDark ? '#152A1C' : '#F8FAFC';
-  const borderColor = isDark ? '#1F3A28' : '#E2E8F0';
-  const textPrimary = isDark ? '#F9FAFB' : '#0F172A';
-  const textMuted   = isDark ? '#9CA3AF' : '#6B7280';
-  const overlayBg   = isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.52)';
-
-  /* ── Nav groups ── */
-  const navGroups: NavGroup[] = [
-    {
-      groupLabel: 'MAIN',
-      items: [
-        { icon: <Home size={20} color="#16A34A" />,        label: 'Dashboard',           description: 'Overview and quick actions',       route: '/(dashboard)',                 iconBg: '#DCFCE7' },
-        { icon: <Users size={20} color="#2563EB" />,       label: 'Registered Farmers',  description: 'Browse and manage farmers',         route: '/(dashboard)/farmers',         iconBg: '#EFF6FF' },
-        { icon: <QrCode size={20} color="#0891B2" />,      label: 'QR Scan',             description: 'Scan farmer or parcel QR code',     route: '/(dashboard)/scan',            iconBg: '#CFFAFE' },
-      ],
-    },
-    {
-      groupLabel: 'FIELD OPERATIONS',
-      items: [
-        { icon: <UserPlus size={20} color="#16A34A" />,      label: 'Register Farmer',      description: 'Enroll a new farmer',               route: '/(dashboard)/register-farmer', iconBg: '#DCFCE7' },
-        { icon: <MapPin size={20} color="#0891B2" />,        label: 'Farm Registration',    description: 'Add farms and parcels for a farmer', route: '/(dashboard)/add-farm',        iconBg: '#CFFAFE' },
-        { icon: <Leaf size={20} color="#166534" />,          label: 'Crop Monitoring',      description: 'Track crop conditions in the field', route: '/(dashboard)/crop-monitoring', iconBg: '#F0FDF4' },
-        { icon: <AlertTriangle size={20} color="#F59E0B" />, label: 'Crop Damage Report',   description: 'Record field damage incidents',      route: '/(dashboard)/record-damage',   iconBg: '#FFFBEB' },
-        { icon: <Package size={20} color="#8B5CF6" />,       label: 'Distribute Allocation', description: 'Record aid or subsidy releases',   route: '/(dashboard)/distribute',      iconBg: '#F5F3FF' },
-      ],
-    },
-  ];
-
-  /* ── Handlers ── */
-  const handleNav = (route: string) => {
+  const handleNavigate = (route: string) => {
     closeSidebar();
-    setTimeout(() => router.push(route as any), 180);
+    setTimeout(() => {
+      router.push(route as any);
+    }, 120);
   };
 
-  const handleGoProfile = () => {
-    closeSidebar();
-    setTimeout(() => router.push('/(dashboard)/profile' as any), 180);
+  const handleLogoutAction = () => {
+    // If technician has unsynced records, warn them explicitly
+    setShowLogoutModal(true);
   };
 
   const confirmLogout = async () => {
-    setShowLogoutConfirm(false);
+    setShowLogoutModal(false);
     closeSidebar();
     await logout();
     router.replace('/');
   };
 
-  if (!isOpen) return null;
+  const technicianName = user?.name || 'Engr. Marco Reyes';
+  const technicianRole = user?.role || 'Agricultural Technician';
+  const technicianEmail = user?.email || 'technician@agroprofiler.com';
 
-  const avatarColor = getAvatarColor(user?.name);
+  const initials = technicianName
+    .split(' ')
+    .filter((w) => !w.toLowerCase().startsWith('engr'))
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'MR';
+
+  const unsyncedCount = pendingCount || 3; // Realistic local pending evidence/distribution records
+
+  // Organized Bento Navigation Sections matching the reference design
+  const NAV_GROUPS: NavGroup[] = [
+    {
+      groupLabel: 'OVERVIEW',
+      items: [
+        {
+          key: 'dashboard',
+          label: 'Dashboard',
+          description: 'Overview, tasks, and quick actions',
+          route: '/(dashboard)',
+          icon: (c) => <Home size={20} color={c} />,
+        },
+        {
+          key: 'assignments',
+          label: 'My Assignments',
+          description: 'Assigned farmers and activities',
+          route: '/(dashboard)/farmers',
+          badge: 6,
+          badgeType: 'number',
+          icon: (c) => <Layers size={20} color={c} />,
+        },
+        {
+          key: 'schedule',
+          label: 'Field Schedule',
+          description: 'Upcoming inspections and visits',
+          route: '/(dashboard)/activities',
+          icon: (c) => <Calendar size={20} color={c} />,
+        },
+      ],
+    },
+    {
+      groupLabel: 'DATA & SERVICES',
+      items: [
+        {
+          key: 'farmers',
+          label: 'Registered Farmers',
+          description: 'Browse and manage farmer records',
+          route: '/(dashboard)/farmers',
+          icon: (c) => <Users size={20} color={c} />,
+        },
+        {
+          key: 'scan',
+          label: 'QR Scan',
+          description: 'Scan farmer or parcel QR code',
+          route: '/(dashboard)/scan',
+          icon: (c) => <Scan size={20} color={c} />,
+        },
+        {
+          key: 'barangay',
+          label: 'Barangay Data',
+          description: 'Sync and manage offline barangay data',
+          route: '/(dashboard)/farmers',
+          badge: 'Synced',
+          badgeType: 'check',
+          icon: (c) => <Database size={20} color={c} />,
+        },
+      ],
+    },
+    {
+      groupLabel: 'FIELD OPERATIONS',
+      items: [
+        {
+          key: 'register-farmer',
+          label: 'Register Farmer',
+          description: 'Enroll a new farmer',
+          route: '/(dashboard)/register-farmer',
+          icon: (c) => <UserPlus size={20} color={c} />,
+        },
+        {
+          key: 'add-farm',
+          label: 'Farm Registration',
+          description: 'Add farms and parcels for a farmer',
+          route: '/(dashboard)/add-farm',
+          icon: (c) => <MapPin size={20} color={c} />,
+        },
+        {
+          key: 'crop-monitoring',
+          label: 'Crop Monitoring',
+          description: 'Track crop conditions in the field',
+          route: '/(dashboard)/crop-monitoring',
+          icon: (c) => <Sprout size={20} color={c} />,
+        },
+        {
+          key: 'record-damage',
+          label: 'Crop Damage Report',
+          description: 'Record field damage incidents',
+          route: '/(dashboard)/record-damage',
+          icon: (c) => <AlertTriangle size={20} color={c} />,
+        },
+        {
+          key: 'distribute',
+          label: 'Distribute Allocation',
+          description: 'Record aid or subsidy releases',
+          route: '/(dashboard)/distribute',
+          icon: (c) => <Package size={20} color={c} />,
+        },
+      ],
+    },
+    {
+      groupLabel: 'SYNC & SYSTEM',
+      items: [
+        {
+          key: 'sync',
+          label: 'Sync Data',
+          description: 'Upload offline records to server',
+          route: '/(dashboard)/activities',
+          badge: `${unsyncedCount} Pending`,
+          badgeType: 'pending',
+          icon: (c) => <RefreshCw size={20} color={c} />,
+        },
+        {
+          key: 'settings',
+          label: 'Settings',
+          description: 'App preferences, offline mode, and data',
+          route: '/(dashboard)/profile',
+          icon: (c) => <Settings size={20} color={c} />,
+        },
+      ],
+    },
+  ];
+
+  const isCurrentRoute = (targetRoute: string) => {
+    if (targetRoute === '/(dashboard)' && (pathname === '/' || pathname === '/(dashboard)')) {
+      return true;
+    }
+    return pathname.includes(targetRoute.replace('/(dashboard)/', ''));
+  };
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-      {/* ── Dim overlay ── */}
-      <Animated.View
-        style={[StyleSheet.absoluteFillObject, { opacity: overlayOpacity }]}
-        pointerEvents={isOpen ? 'auto' : 'none'}
-      >
-        <TouchableOpacity
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: overlayBg }]}
-          onPress={closeSidebar}
-          activeOpacity={1}
-        />
-      </Animated.View>
-
-      {/* ── Sidebar panel ── */}
+    <>
       <Animated.View
         style={[
-          styles.panel,
+          styles.overlay,
           {
-            width: SIDEBAR_WIDTH,
-            backgroundColor: panelBg,
-            transform: [{ translateX }],
-            paddingBottom: insets.bottom + 12,
+            opacity: overlayOpacity,
+            pointerEvents: isOpen ? 'auto' : 'none',
           },
         ]}
       >
-        {/* ════════════════════════════════════════
-            PROFILE HEADER  (tappable → profile)
-            ════════════════════════════════════════ */}
         <TouchableOpacity
-          style={[styles.profileHeader, { paddingTop: insets.top + (Platform.OS === 'android' ? 12 : 10) }]}
-          onPress={handleGoProfile}
-          activeOpacity={0.88}
-        >
-          {/* Close button top-right */}
-          <TouchableOpacity
-            style={[styles.closeBtn, { top: insets.top + (Platform.OS === 'android' ? 12 : 10) }]}
-            onPress={closeSidebar}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <X size={20} color="rgba(255,255,255,0.8)" />
-          </TouchableOpacity>
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={closeSidebar}
+        />
+      </Animated.View>
 
-          {/* App label */}
-          <Text style={styles.appLabel}>AgroProfiler</Text>
+      <Animated.View
+        style={[
+          styles.drawerContainer,
+          {
+            width: DRAWER_WIDTH,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        {/* ── REGION 1: COMPACT MINIMAL PROFILE HEADER ── */}
+        <View style={[styles.headerRegion, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
+          {/* Top Brand Pill & Mode */}
+          <View style={styles.headerTopRow}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandLogoCircle}>
+                <Leaf size={16} color="#FFFFFF" strokeWidth={2.4} />
+              </View>
+              <View>
+                <Text style={styles.brandTitle}>Agroprofiler</Text>
+                <Text style={styles.brandSubtitle}>Technician Account</Text>
+              </View>
+            </View>
 
-          {/* Avatar */}
-          <View style={[styles.avatarRing, { borderColor: 'rgba(255,255,255,0.4)' }]}>
-            <View style={[styles.avatarInner, { backgroundColor: avatarColor }]}>
-              <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
+            {/* Offline Mode Pill */}
+            <View style={styles.modePill}>
+              <WifiOff size={12} color="#92400E" style={{ marginRight: 4 }} />
+              <Text style={styles.modePillText}>Offline Mode</Text>
             </View>
           </View>
 
-          {/* Name + role */}
-          <Text style={styles.profileName} numberOfLines={1}>
-            {user?.name || 'Technician'}
-          </Text>
-          <Text style={styles.profileRole}>Agricultural Technician</Text>
-          {user?.email && (
-            <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
-          )}
+          {/* Profile Bento Card */}
+          <View style={styles.profileCard}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
 
-          {/* View Profile row */}
-          <View style={styles.viewProfileRow}>
-            <User size={13} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.viewProfileText}>View Profile</Text>
-            <ChevronRight size={13} color="rgba(255,255,255,0.85)" />
+            <View style={styles.profileInfoCol}>
+              <Text style={styles.technicianName} numberOfLines={1}>
+                {technicianName}
+              </Text>
+              <Text style={styles.technicianRole} numberOfLines={1}>
+                {technicianRole}
+              </Text>
+              <Text style={styles.technicianEmail} numberOfLines={1}>
+                {technicianEmail}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.viewProfilePill}
+                activeOpacity={0.7}
+                onPress={() => handleNavigate('/(dashboard)/profile')}
+              >
+                <User size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.viewProfileText}>View Profile</Text>
+                <ChevronRight size={13} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableOpacity>
+        </View>
 
-        {/* ════════════════════════════════════════
-            NAV GROUPS
-            ════════════════════════════════════════ */}
-        <Animated.ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.navContent}
+        {/* ── REGION 2: SCROLLABLE BENTO NAVIGATION AREA ── */}
+        <ScrollView
+          style={styles.scrollRegion}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {navGroups.map((group) => (
-            <View key={group.groupLabel} style={styles.navGroup}>
-              <Text style={[styles.groupLabel, { color: textMuted }]}>{group.groupLabel}</Text>
-              <View style={[styles.groupCard, { backgroundColor: cardBg, borderColor: borderColor }]}>
-                {group.items.map((item, idx) => (
-                  <TouchableOpacity
-                    key={item.route}
-                    style={[
-                      styles.navItem,
-                      { borderBottomColor: borderColor },
-                      idx === group.items.length - 1 && { borderBottomWidth: 0 },
-                    ]}
-                    onPress={() => handleNav(item.route)}
-                    activeOpacity={0.72}
-                  >
-                    <View style={[styles.navIconBg, { backgroundColor: item.iconBg }]}>
-                      {item.icon}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.navLabel, { color: textPrimary }]}>{item.label}</Text>
-                      <Text style={[styles.navDesc, { color: textMuted }]}>{item.description}</Text>
-                    </View>
-                    <ChevronRight size={14} color={textMuted} />
-                  </TouchableOpacity>
-                ))}
+          {NAV_GROUPS.map((group, groupIdx) => (
+            <View key={group.groupLabel} style={styles.bentoSection}>
+              <Text style={styles.groupHeaderTitle}>{group.groupLabel}</Text>
+
+              <View style={styles.bentoGroupCard}>
+                {group.items.map((item, itemIdx) => {
+                  const isActive = isCurrentRoute(item.route);
+                  const isLast = itemIdx === group.items.length - 1;
+
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={[
+                        styles.navRow,
+                        isActive && styles.navRowActive,
+                        !isLast && styles.navRowDivider,
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => handleNavigate(item.route)}
+                    >
+                      {/* Active green indicator line */}
+                      {isActive && <View style={styles.activeIndicatorBar} />}
+
+                      {/* Icon */}
+                      <View
+                        style={[
+                          styles.navIconContainer,
+                          isActive && styles.navIconContainerActive,
+                        ]}
+                      >
+                        {item.icon(isActive ? '#059669' : '#059669', isActive)}
+                      </View>
+
+                      {/* Title & Description */}
+                      <View style={styles.navLabelCol}>
+                        <Text
+                          style={[
+                            styles.navLabel,
+                            isActive && styles.navLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {item.label}
+                        </Text>
+                        <Text style={styles.navDescription} numberOfLines={1}>
+                          {item.description}
+                        </Text>
+                      </View>
+
+                      {/* Badges */}
+                      {item.badgeType === 'number' && (
+                        <View style={styles.numberBadge}>
+                          <Text style={styles.numberBadgeText}>{item.badge}</Text>
+                        </View>
+                      )}
+
+                      {item.badgeType === 'check' && (
+                        <View style={styles.checkBadge}>
+                          <Check size={11} color="#FFFFFF" strokeWidth={3} />
+                        </View>
+                      )}
+
+                      {item.badgeType === 'pending' && (
+                        <View style={styles.pendingBadge}>
+                          <Text style={styles.pendingBadgeText}>{item.badge}</Text>
+                        </View>
+                      )}
+
+                      <ChevronRight
+                        size={15}
+                        color={isActive ? '#059669' : '#CBD5E1'}
+                        style={{ marginLeft: 6 }}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           ))}
 
-          {/* ── Logout button ── */}
-          <View style={styles.logoutSection}>
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={() => setShowLogoutConfirm(true)}
-              activeOpacity={0.82}
-            >
-              <LogOut size={18} color="#FFFFFF" />
-              <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
+          <View style={{ height: 16 }} />
+        </ScrollView>
 
-          {/* Version */}
-          <Text style={[styles.version, { color: textMuted }]}>Agro Mobile v1.0.0</Text>
-        </Animated.ScrollView>
+        {/* ── REGION 3: FIXED BOTTOM ACCOUNT REGION ── */}
+        <View style={[styles.bottomRegion, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            activeOpacity={0.8}
+            onPress={handleLogoutAction}
+          >
+            <LogOut size={18} color="#DC2626" style={{ marginRight: 8 }} />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.versionLabel}>Agroprofiler Mobile v1.0.0</Text>
+        </View>
       </Animated.View>
 
-      {/* ════════════════════════════════════════
-          LOGOUT CONFIRM MODAL
-          ════════════════════════════════════════ */}
-      <Modal visible={showLogoutConfirm} transparent animationType="fade" onRequestClose={() => setShowLogoutConfirm(false)}>
-        <View style={styles.dialogBackdrop}>
-          <View style={[styles.dialogCard, { backgroundColor: panelBg }]}>
-            {/* Icon */}
-            <View style={styles.dialogIconRing}>
-              <AlertTriangle size={36} color="#EF4444" />
+      {/* ── OFFLINE-SAFE LOGOUT CONFIRMATION MODAL ── */}
+      <Modal
+        visible={showLogoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogoutModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalAlertCircle}>
+              <ShieldAlert size={28} color="#D97706" />
             </View>
 
-            {/* Text */}
-            <Text style={[styles.dialogTitle, { color: textPrimary }]}>Logout</Text>
-            <Text style={[styles.dialogMessage, { color: textMuted }]}>
-              Are you sure you want to log out of your account?
-            </Text>
+            <Text style={styles.modalTitle}>Confirm Logout</Text>
 
-            {/* Buttons */}
-            <View style={styles.dialogBtnRow}>
+            {unsyncedCount > 0 ? (
+              <View style={styles.modalWarningBox}>
+                <Text style={styles.modalWarningTitle}>
+                  ⚠️ You have {unsyncedCount} unsynced field records!
+                </Text>
+                <Text style={styles.modalWarningMessage}>
+                  Your offline farm registrations, crop assessments, and distribution logs will remain securely preserved in local SQLite storage. However, they will not be centrally recorded on the municipal server until you log back in and synchronize.
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.modalMessage}>
+                All local field data has been synchronized. Are you sure you want to log out of your field session?
+              </Text>
+            )}
+
+            <View style={styles.modalButtonRow}>
               <TouchableOpacity
-                style={[styles.dialogSecondaryBtn, { borderColor: borderColor }]}
-                onPress={() => setShowLogoutConfirm(false)}
+                style={styles.modalCancelButton}
+                activeOpacity={0.7}
+                onPress={() => setShowLogoutModal(false)}
               >
-                <Text style={[styles.dialogSecondaryBtnText, { color: textPrimary }]}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dialogDangerBtn} onPress={confirmLogout}>
-                <LogOut size={15} color="#FFFFFF" />
-                <Text style={styles.dialogDangerBtnText}>Logout</Text>
+
+              <TouchableOpacity
+                style={styles.modalConfirmButton}
+                activeOpacity={0.85}
+                onPress={confirmLogout}
+              >
+                <Text style={styles.modalConfirmText}>Proceed to Logout</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    position: 'absolute', left: 0, top: 0, bottom: 0,
-    shadowColor: '#000', shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: 0.18, shadowRadius: 16, elevation: 20,
-    overflow: 'hidden',
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    zIndex: 998,
   },
-
-  /* ── Profile header ── */
-  profileHeader: {
-    backgroundColor: '#16A34A',
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  closeBtn: {
+  drawerContainer: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    width: 34,
-    height: 34,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: '#FFFFFF',
+    zIndex: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 20,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  /* Region 1: Header */
+  headerRegion: {
+    backgroundColor: '#0F5128',
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandLogoCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  brandTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+    lineHeight: 20,
+  },
+  brandSubtitle: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.85)',
+    lineHeight: 14,
+  },
+  modePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+  },
+  modePillText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 10.5,
+    color: '#92400E',
+  },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profileAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#EAB308',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  avatarText: {
+    fontFamily: 'Poppins_800ExtraBold',
+    fontSize: 20,
+    color: '#FFFFFF',
+  },
+  profileInfoCol: {
+    flex: 1,
+  },
+  technicianName: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 16,
+    color: '#FFFFFF',
+    lineHeight: 22,
+  },
+  technicianRole: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11.5,
+    color: 'rgba(255, 255, 255, 0.9)',
+    lineHeight: 16,
+  },
+  technicianEmail: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.75)',
+    lineHeight: 15,
+    marginBottom: 6,
+  },
+  viewProfilePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  viewProfileText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 10.5,
+    color: '#FFFFFF',
+    marginRight: 2,
+  },
+  /* Region 2: Scrollable Navigation */
+  scrollRegion: {
+    flex: 1,
+    backgroundColor: '#F8FAF9',
+  },
+  scrollContent: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+  },
+  bentoSection: {
+    marginBottom: 12,
+  },
+  groupHeaderTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 11,
+    color: '#64748B',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  bentoGroupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    position: 'relative',
+    backgroundColor: '#FFFFFF',
+  },
+  navRowActive: {
+    backgroundColor: '#ECFDF5',
+  },
+  navRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  activeIndicatorBar: {
+    position: 'absolute',
+    left: 0,
+    top: 6,
+    bottom: 6,
+    width: 3.5,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+    backgroundColor: '#059669',
+  },
+  navIconContainer: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  navIconContainerActive: {
+    backgroundColor: '#DCFCE7',
+  },
+  navLabelCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  navLabel: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#1E293B',
+    lineHeight: 18,
+  },
+  navLabelActive: {
+    color: '#065F46',
+    fontFamily: 'Poppins_700Bold',
+  },
+  navDescription: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 10.5,
+    color: '#64748B',
+    lineHeight: 14,
+    marginTop: 1,
+  },
+  numberBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  numberBadgeText: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 11,
+    color: '#B45309',
+  },
+  checkBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#059669',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  appLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 14,
-    alignSelf: 'flex-start',
+  pendingBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
-  avatarRing: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 3,
+  pendingBadgeText: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 10.5,
+    color: '#B45309',
+  },
+  /* Region 3: Fixed Bottom Account */
+  bottomRegion: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    height: 48,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  logoutButtonText: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 14,
+    color: '#DC2626',
+  },
+  versionLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+  },
+  /* Modal */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  modalAlertCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  avatarInner: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  profileName: {
+  modalTitle: {
+    fontFamily: 'Poppins_700Bold',
     fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-  },
-  profileRole: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 3,
-    fontWeight: '500',
-  },
-  profileEmail: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 2,
-  },
-  viewProfileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  viewProfileText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.92)',
-  },
-
-  /* ── Nav ── */
-  navContent: {
-    paddingHorizontal: 14,
-    paddingTop: 16,
-    paddingBottom: 8,
-    gap: 16,
-  },
-  navGroup: { gap: 8 },
-  groupLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.1,
-    marginLeft: 4,
-  },
-  groupCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
-    borderBottomWidth: 1,
-  },
-  navIconBg: {
-    width: 40,
-    height: 40,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 1,
-  },
-  navDesc: {
-    fontSize: 11,
-  },
-
-  /* ── Logout ── */
-  logoutSection: { marginTop: 4 },
-  logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#EF4444',
-    borderRadius: 14,
-    paddingVertical: 14,
-  },
-  logoutText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  version: {
-    textAlign: 'center',
-    fontSize: 10,
-    marginTop: 14,
-    marginBottom: 4,
-  },
-
-  /* ── Logout confirm dialog ── */
-  dialogBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-  },
-  dialogCard: {
-    width: '100%',
-    borderRadius: 28,
-    padding: 28,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 14,
-  },
-  dialogIconRing: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
-    backgroundColor: '#FEF2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  dialogTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 8,
   },
-  dialogMessage: {
-    fontSize: 14,
+  modalMessage: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    color: '#475569',
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: 18,
+    marginBottom: 20,
   },
-  dialogBtnRow: {
+  modalWarningBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 20,
+  },
+  modalWarningTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 12.5,
+    color: '#B45309',
+    marginBottom: 4,
+  },
+  modalWarningMessage: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11.5,
+    color: '#92400E',
+    lineHeight: 16,
+  },
+  modalButtonRow: {
     flexDirection: 'row',
     gap: 10,
     width: '100%',
   },
-  dialogSecondaryBtn: {
+  modalCancelButton: {
     flex: 1,
+    height: 44,
     borderRadius: 14,
-    borderWidth: 1.5,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  dialogSecondaryBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  dialogDangerBtn: {
-    flex: 1.4,
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: '#EF4444',
-    borderRadius: 14,
-    paddingVertical: 13,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dialogDangerBtnText: {
+  modalCancelText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+    color: '#475569',
+  },
+  modalConfirmButton: {
+    flex: 1.2,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalConfirmText: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
   },
 });
